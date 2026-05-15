@@ -1,0 +1,1147 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/>
+<meta name="theme-color" content="#0f0f0f"/>
+<meta name="apple-mobile-web-app-capable" content="yes"/>
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
+<title>Shelf</title>
+<link rel="manifest" href="manifest.json"/>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet"/>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/quagga/0.12.1/quagga.min.js"></script>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#0f0f0f;--bg2:#181818;--bg3:#242424;--bg4:#2e2e2e;
+  --text:#f0ede8;--text2:#a09d98;--text3:#666360;
+  --accent:#e8c87a;--accent2:#c4a655;
+  --danger:#e07070;--success:#70c07a;--info:#7ab0e0;
+  --radius:12px;--radius-sm:8px;--radius-lg:18px;
+  --font:'DM Sans',sans-serif;--mono:'DM Mono',monospace;
+  --safe-top:env(safe-area-inset-top,0px);
+  --safe-bottom:env(safe-area-inset-bottom,0px);
+}
+html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);font-family:var(--font);font-size:15px;-webkit-font-smoothing:antialiased}
+#app{display:flex;flex-direction:column;height:100%;height:100dvh}
+
+/* ── Header ── */
+header{
+  padding:calc(var(--safe-top) + 12px) 16px 12px;
+  background:var(--bg);border-bottom:1px solid var(--bg3);
+  display:flex;align-items:center;gap:10px;flex-shrink:0;
+  position:sticky;top:0;z-index:50;
+}
+.logo{font-family:var(--mono);font-size:20px;font-weight:500;color:var(--accent);letter-spacing:-0.5px;flex:1}
+.logo span{color:var(--text3);font-size:11px;display:block;font-weight:400;letter-spacing:0;font-family:var(--font)}
+.hdr-btn{width:38px;height:38px;border-radius:50%;border:1px solid var(--bg4);background:var(--bg2);
+  display:flex;align-items:center;justify-content:center;cursor:pointer;color:var(--text2);flex-shrink:0;transition:background .15s}
+.hdr-btn:active{background:var(--bg4)}
+.hdr-btn svg{width:18px;height:18px}
+.cloud-badge{font-size:10px;font-family:var(--mono);padding:2px 7px;border-radius:20px;border:1px solid var(--bg4);color:var(--text3)}
+.cloud-badge.connected{color:var(--success);border-color:rgba(112,192,122,.3);background:rgba(112,192,122,.07)}
+
+/* ── Tabs ── */
+.tabs{display:flex;gap:0;border-bottom:1px solid var(--bg3);background:var(--bg);flex-shrink:0}
+.tab{flex:1;padding:10px 4px;text-align:center;font-size:12px;color:var(--text3);cursor:pointer;
+  border-bottom:2px solid transparent;transition:all .15s;font-family:var(--mono);letter-spacing:.3px}
+.tab.active{color:var(--accent);border-bottom-color:var(--accent)}
+
+/* ── Scroll area ── */
+.screen{flex:1;overflow-y:auto;overflow-x:hidden;-webkit-overflow-scrolling:touch;padding:0 0 calc(var(--safe-bottom) + 80px)}
+.screen.hidden{display:none}
+
+/* ── FAB ── */
+.fab{
+  position:fixed;bottom:calc(var(--safe-bottom) + 16px);right:16px;
+  width:56px;height:56px;border-radius:50%;
+  background:var(--accent);color:#1a1500;
+  border:none;font-size:26px;cursor:pointer;
+  display:flex;align-items:center;justify-content:center;
+  box-shadow:0 4px 20px rgba(232,200,122,.3);z-index:40;
+  transition:transform .15s,box-shadow .15s;font-weight:300
+}
+.fab:active{transform:scale(0.93);box-shadow:0 2px 10px rgba(232,200,122,.2)}
+
+/* ── Cards ── */
+.item-card{
+  margin:10px 12px 0;padding:12px 14px;
+  background:var(--bg2);border-radius:var(--radius);border:1px solid var(--bg3);
+  display:flex;gap:12px;align-items:flex-start;cursor:pointer;
+  transition:background .1s;
+}
+.item-card:active{background:var(--bg3)}
+.item-thumb{width:44px;height:56px;border-radius:6px;object-fit:cover;background:var(--bg3);flex-shrink:0;
+  display:flex;align-items:center;justify-content:center;font-size:20px}
+.item-info{flex:1;min-width:0}
+.item-title{font-size:14px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--text)}
+.item-sub{font-size:12px;color:var(--text2);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.item-meta{display:flex;gap:6px;margin-top:6px;flex-wrap:wrap}
+.badge{font-size:10px;font-family:var(--mono);padding:2px 7px;border-radius:20px;background:var(--bg4);color:var(--text3)}
+.badge.cat-book{background:rgba(122,176,224,.12);color:var(--info)}
+.badge.cat-dvd{background:rgba(224,122,122,.12);color:var(--danger)}
+.badge.cat-game{background:rgba(232,200,122,.12);color:var(--accent)}
+.badge.cat-board{background:rgba(112,192,122,.12);color:var(--success)}
+.badge.cat-cd{background:rgba(180,140,220,.12);color:#b48cdc}
+.badge.cat-other{background:var(--bg4);color:var(--text3)}
+
+/* ── Search bar ── */
+.search-wrap{padding:12px 12px 4px;position:sticky;top:0;background:var(--bg);z-index:10}
+.search-box{
+  display:flex;align-items:center;gap:8px;
+  background:var(--bg2);border:1px solid var(--bg3);border-radius:var(--radius-sm);
+  padding:0 12px;
+}
+.search-box svg{width:16px;height:16px;color:var(--text3);flex-shrink:0}
+.search-box input{flex:1;background:none;border:none;outline:none;color:var(--text);font-size:14px;padding:10px 0;font-family:var(--font)}
+.search-box input::placeholder{color:var(--text3)}
+
+/* ── Filter pills ── */
+.filter-row{display:flex;gap:6px;padding:8px 12px 4px;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none}
+.filter-row::-webkit-scrollbar{display:none}
+.fpill{flex-shrink:0;font-size:12px;font-family:var(--mono);padding:5px 12px;border-radius:20px;
+  border:1px solid var(--bg4);background:var(--bg2);color:var(--text3);cursor:pointer;transition:all .12s}
+.fpill.active{background:var(--accent);color:#1a1500;border-color:var(--accent)}
+
+/* ── Empty state ── */
+.empty{text-align:center;padding:60px 24px;color:var(--text3)}
+.empty .icon{font-size:48px;margin-bottom:16px;opacity:.4}
+.empty h3{font-size:16px;color:var(--text2);font-weight:400;margin-bottom:6px}
+.empty p{font-size:13px;line-height:1.6}
+
+/* ── Modal / Sheet ── */
+.overlay{position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:100;display:none;align-items:flex-end}
+.overlay.open{display:flex}
+.sheet{
+  width:100%;max-height:94dvh;overflow-y:auto;
+  background:var(--bg);border-radius:22px 22px 0 0;
+  padding:0 0 calc(var(--safe-bottom) + 20px);
+  animation:slideUp .25s cubic-bezier(.32,.72,0,1);
+}
+@keyframes slideUp{from{transform:translateY(100%)}to{transform:translateY(0)}}
+.sheet-handle{width:36px;height:4px;background:var(--bg4);border-radius:2px;margin:12px auto 0}
+.sheet-title{font-size:17px;font-weight:500;padding:16px 16px 8px}
+.sheet-close{position:absolute;top:16px;right:16px;width:30px;height:30px;border-radius:50%;
+  background:var(--bg3);border:none;color:var(--text2);font-size:18px;cursor:pointer;
+  display:flex;align-items:center;justify-content:center;line-height:1}
+
+/* ── Form ── */
+.form-section{padding:8px 16px}
+.form-label{font-size:11px;font-family:var(--mono);color:var(--text3);letter-spacing:.5px;
+  text-transform:uppercase;margin-bottom:5px;margin-top:14px;display:block}
+.form-input{
+  width:100%;background:var(--bg2);border:1px solid var(--bg3);border-radius:var(--radius-sm);
+  color:var(--text);font-family:var(--font);font-size:14px;padding:10px 12px;outline:none;
+  transition:border-color .12s;
+}
+.form-input:focus{border-color:var(--accent)}
+.form-input::placeholder{color:var(--text3)}
+select.form-input{-webkit-appearance:none;appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23666360' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 12px center}
+textarea.form-input{resize:vertical;min-height:72px}
+
+.cam-row{display:flex;gap:8px;margin-top:6px}
+.cam-btn{flex:1;padding:10px;border-radius:var(--radius-sm);border:1px dashed var(--bg4);
+  background:var(--bg2);color:var(--text2);font-size:12px;font-family:var(--mono);
+  cursor:pointer;text-align:center;transition:all .12s;display:flex;flex-direction:column;align-items:center;gap:4px}
+.cam-btn svg{width:20px;height:20px}
+.cam-btn:active{background:var(--bg3);border-color:var(--accent);color:var(--accent)}
+
+.lookup-result{
+  margin-top:10px;padding:12px;border-radius:var(--radius-sm);
+  background:var(--bg2);border:1px solid var(--bg3);display:none;
+}
+.lookup-result.visible{display:block}
+.lookup-result .lr-title{font-size:13px;font-weight:500;color:var(--text)}
+.lookup-result .lr-sub{font-size:11px;color:var(--text2);margin-top:3px}
+.lr-apply{font-size:12px;font-family:var(--mono);color:var(--accent);cursor:pointer;
+  margin-top:8px;display:inline-block;padding:4px 10px;border-radius:20px;background:rgba(232,200,122,.1)}
+
+.btn-row{display:flex;gap:8px;padding:16px 16px 0}
+.btn{flex:1;padding:13px;border-radius:var(--radius-sm);font-size:14px;font-weight:500;
+  cursor:pointer;transition:all .12s;font-family:var(--font)}
+.btn-primary{background:var(--accent);color:#1a1500;border:none}
+.btn-primary:active{background:var(--accent2)}
+.btn-secondary{background:var(--bg2);color:var(--text2);border:1px solid var(--bg3)}
+.btn-secondary:active{background:var(--bg3)}
+.btn-danger{background:rgba(224,112,112,.1);color:var(--danger);border:1px solid rgba(224,112,112,.2)}
+
+/* ── Camera view ── */
+.cam-overlay{position:fixed;inset:0;background:#000;z-index:200;display:none;flex-direction:column}
+.cam-overlay.open{display:flex}
+#barcode-scanner{position:relative;flex:1;overflow:hidden}
+#barcode-scanner canvas,#barcode-scanner video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.cam-ui{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;pointer-events:none}
+.scan-frame{width:240px;height:150px;border:2px solid var(--accent);border-radius:10px;
+  box-shadow:0 0 0 4000px rgba(0,0,0,.5);position:relative}
+.scan-line{position:absolute;left:0;right:0;height:2px;background:var(--accent);opacity:.8;
+  animation:scanAnim 1.8s ease-in-out infinite}
+@keyframes scanAnim{0%{top:10%}50%{top:85%}100%{top:10%}}
+.scan-hint{color:rgba(255,255,255,.7);font-size:13px;margin-top:20px;font-family:var(--mono)}
+.cam-close-btn{position:absolute;top:calc(var(--safe-top) + 16px);right:16px;
+  width:40px;height:40px;border-radius:50%;background:rgba(0,0,0,.6);border:1px solid rgba(255,255,255,.2);
+  color:#fff;font-size:20px;cursor:pointer;display:flex;align-items:center;justify-content:center;pointer-events:all;z-index:10}
+.cam-mode-row{position:absolute;bottom:calc(var(--safe-bottom) + 20px);left:0;right:0;
+  display:flex;justify-content:center;gap:10px;pointer-events:all}
+.cam-mode-btn{padding:10px 20px;border-radius:20px;background:rgba(0,0,0,.6);border:1px solid rgba(255,255,255,.25);
+  color:#fff;font-size:13px;font-family:var(--mono);cursor:pointer;transition:all .12s}
+.cam-mode-btn.active{background:var(--accent);color:#1a1500;border-color:var(--accent)}
+#photo-capture-btn{position:absolute;bottom:calc(var(--safe-bottom) + 24px);left:50%;transform:translateX(-50%);
+  width:64px;height:64px;border-radius:50%;border:3px solid #fff;background:rgba(255,255,255,.15);cursor:pointer;
+  display:none;pointer-events:all}
+#photo-capture-btn::after{content:'';position:absolute;inset:6px;border-radius:50%;background:#fff}
+
+/* ── Cloud connect sheet ── */
+.cloud-option{
+  margin:8px 16px;padding:14px;border-radius:var(--radius);
+  background:var(--bg2);border:1px solid var(--bg3);cursor:pointer;
+  display:flex;align-items:center;gap:14px;transition:background .12s
+}
+.cloud-option:active{background:var(--bg3)}
+.cloud-icon{width:40px;height:40px;border-radius:10px;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:20px}
+.cloud-info{flex:1}
+.cloud-name{font-size:14px;font-weight:500}
+.cloud-desc{font-size:12px;color:var(--text2);margin-top:2px}
+.cloud-status{font-size:11px;font-family:var(--mono)}
+.cloud-status.ok{color:var(--success)}
+.cloud-status.none{color:var(--text3)}
+
+/* ── Detail view ── */
+.detail-hero{width:100%;aspect-ratio:3/2;background:var(--bg2);border-radius:0;object-fit:cover;
+  display:flex;align-items:center;justify-content:center;font-size:60px}
+.detail-body{padding:16px}
+.detail-title{font-size:20px;font-weight:500;line-height:1.3}
+.detail-creator{font-size:14px;color:var(--text2);margin-top:4px}
+.detail-row{display:flex;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--bg3);font-size:13px}
+.detail-row:last-child{border-bottom:none}
+.detail-key{color:var(--text3);font-family:var(--mono);font-size:11px;letter-spacing:.3px}
+.detail-val{color:var(--text);text-align:right;max-width:60%}
+
+/* ── Spinner ── */
+.spinner{display:inline-block;width:18px;height:18px;border:2px solid var(--bg4);
+  border-top-color:var(--accent);border-radius:50%;animation:spin .7s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* ── Toast ── */
+.toast{
+  position:fixed;bottom:calc(var(--safe-bottom) + 80px);left:50%;transform:translateX(-50%) translateY(20px);
+  background:var(--bg3);color:var(--text);font-size:13px;padding:10px 18px;border-radius:20px;
+  white-space:nowrap;z-index:999;opacity:0;transition:all .2s;pointer-events:none;border:1px solid var(--bg4)
+}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+.toast.ok{border-color:rgba(112,192,122,.4);color:var(--success)}
+.toast.err{border-color:rgba(224,112,112,.4);color:var(--danger)}
+
+/* ── Stats screen ── */
+.stats-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;padding:14px 12px}
+.stat-card{background:var(--bg2);border:1px solid var(--bg3);border-radius:var(--radius);padding:14px}
+.stat-num{font-size:28px;font-family:var(--mono);font-weight:500;color:var(--accent)}
+.stat-lbl{font-size:11px;color:var(--text3);font-family:var(--mono);letter-spacing:.4px;margin-top:4px}
+.cat-bar-row{margin:4px 12px;background:var(--bg2);border:1px solid var(--bg3);border-radius:var(--radius);padding:14px}
+.cat-bar-row h3{font-size:12px;font-family:var(--mono);color:var(--text3);letter-spacing:.5px;margin-bottom:12px}
+.cat-row{display:flex;align-items:center;gap:8px;margin-bottom:8px}
+.cat-name{font-size:12px;color:var(--text2);width:64px;flex-shrink:0;font-family:var(--mono)}
+.cat-track{flex:1;height:6px;background:var(--bg3);border-radius:3px;overflow:hidden}
+.cat-fill{height:100%;border-radius:3px;transition:width .5s ease}
+.cat-count{font-size:11px;color:var(--text3);font-family:var(--mono);width:24px;text-align:right}
+
+.sync-row{margin:4px 12px;background:var(--bg2);border:1px solid var(--bg3);border-radius:var(--radius);padding:14px}
+.sync-row h3{font-size:12px;font-family:var(--mono);color:var(--text3);letter-spacing:.5px;margin-bottom:10px}
+.sync-info{font-size:13px;color:var(--text2)}
+.sync-info span{color:var(--text)}
+.sync-btn{width:100%;margin-top:12px;padding:11px;border-radius:var(--radius-sm);
+  background:var(--bg3);border:1px solid var(--bg4);color:var(--text);font-size:13px;font-family:var(--mono);cursor:pointer}
+.sync-btn:active{background:var(--bg4)}
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <div class="logo">shelf<span>personal inventory</span></div>
+    <span class="cloud-badge" id="cloud-badge">no cloud</span>
+    <button class="hdr-btn" id="cloud-btn" title="Connect cloud storage">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M18 10h-1.26A8 8 0 109 20h9a5 5 0 000-10z"/></svg>
+    </button>
+  </header>
+
+  <div class="tabs">
+    <div class="tab active" data-tab="collection">Collection</div>
+    <div class="tab" data-tab="stats">Stats</div>
+  </div>
+
+  <!-- COLLECTION TAB -->
+  <div class="screen" id="tab-collection">
+    <div class="search-wrap">
+      <div class="search-box">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
+        <input id="search-input" type="search" placeholder="Search title, creator, ISBN…"/>
+      </div>
+    </div>
+    <div class="filter-row" id="filter-row">
+      <div class="fpill active" data-cat="all">all</div>
+      <div class="fpill" data-cat="book">books</div>
+      <div class="fpill" data-cat="dvd">dvd/blu-ray</div>
+      <div class="fpill" data-cat="game">video games</div>
+      <div class="fpill" data-cat="board">board games</div>
+      <div class="fpill" data-cat="cd">music</div>
+      <div class="fpill" data-cat="other">other</div>
+    </div>
+    <div id="items-list"></div>
+  </div>
+
+  <!-- STATS TAB -->
+  <div class="screen hidden" id="tab-stats">
+    <div class="stats-grid" id="stats-grid"></div>
+    <div class="cat-bar-row">
+      <h3>BY CATEGORY</h3>
+      <div id="cat-bars"></div>
+    </div>
+    <div class="sync-row">
+      <h3>CLOUD SYNC</h3>
+      <div class="sync-info" id="sync-info">Not connected</div>
+      <button class="sync-btn" id="sync-now-btn">↑ sync now</button>
+    </div>
+  </div>
+
+  <button class="fab" id="add-fab">+</button>
+</div>
+
+<!-- TOAST -->
+<div class="toast" id="toast"></div>
+
+<!-- CAMERA OVERLAY -->
+<div class="cam-overlay" id="cam-overlay">
+  <button class="cam-close-btn" id="cam-close">✕</button>
+  <div id="barcode-scanner">
+    <div class="cam-ui">
+      <div class="scan-frame" id="scan-frame-box"><div class="scan-line" id="scan-line"></div></div>
+      <div class="scan-hint" id="scan-hint">point at barcode</div>
+    </div>
+  </div>
+  <div class="cam-mode-row">
+    <button class="cam-mode-btn active" id="mode-barcode">barcode</button>
+    <button class="cam-mode-btn" id="mode-cover">cover photo</button>
+  </div>
+  <button id="photo-capture-btn"></button>
+</div>
+
+<!-- ADD / EDIT SHEET -->
+<div class="overlay" id="add-overlay">
+  <div class="sheet" id="add-sheet" style="position:relative">
+    <div class="sheet-handle"></div>
+    <button class="sheet-close" id="sheet-close">✕</button>
+    <div class="sheet-title" id="sheet-title">Add item</div>
+
+    <div class="form-section">
+      <div class="cam-row">
+        <button class="cam-btn" id="open-camera-btn">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/><circle cx="12" cy="13" r="4"/></svg>
+          scan barcode / cover
+        </button>
+        <button class="cam-btn" id="manual-lookup-btn">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
+          lookup by ISBN/UPC
+        </button>
+      </div>
+
+      <div class="lookup-result" id="lookup-result">
+        <div class="lr-title" id="lr-title"></div>
+        <div class="lr-sub" id="lr-sub"></div>
+        <span class="lr-apply" id="lr-apply">↓ use this result</span>
+      </div>
+
+      <label class="form-label">category</label>
+      <select class="form-input" id="f-category">
+        <option value="book">📚 Book</option>
+        <option value="dvd">📀 DVD / Blu-ray</option>
+        <option value="game">🎮 Video Game</option>
+        <option value="board">🎲 Board Game</option>
+        <option value="cd">💿 Music / CD</option>
+        <option value="other">📦 Other</option>
+      </select>
+
+      <label class="form-label">title</label>
+      <input class="form-input" id="f-title" type="text" placeholder="Title"/>
+
+      <label class="form-label">creator</label>
+      <input class="form-input" id="f-creator" type="text" placeholder="Author / Director / Artist / Publisher"/>
+
+      <label class="form-label">year</label>
+      <input class="form-input" id="f-year" type="number" placeholder="Year" min="1800" max="2099"/>
+
+      <label class="form-label">identifier (ISBN / UPC / barcode)</label>
+      <input class="form-input" id="f-isbn" type="text" placeholder="Optional"/>
+
+      <label class="form-label">platform / format</label>
+      <input class="form-input" id="f-platform" type="text" placeholder="e.g. PS5, Hardcover, 4K UHD…"/>
+
+      <label class="form-label">condition</label>
+      <select class="form-input" id="f-condition">
+        <option>New</option>
+        <option selected>Good</option>
+        <option>Fair</option>
+        <option>Poor</option>
+      </select>
+
+      <label class="form-label">notes</label>
+      <textarea class="form-input" id="f-notes" placeholder="Optional notes…"></textarea>
+
+      <label class="form-label">image url (optional)</label>
+      <input class="form-input" id="f-image" type="url" placeholder="https://…"/>
+    </div>
+
+    <div class="btn-row">
+      <button class="btn btn-secondary" id="btn-cancel">Cancel</button>
+      <button class="btn btn-primary" id="btn-save">Save item</button>
+    </div>
+    <div id="delete-row"></div>
+  </div>
+</div>
+
+<!-- DETAIL SHEET -->
+<div class="overlay" id="detail-overlay">
+  <div class="sheet" id="detail-sheet" style="position:relative">
+    <div class="sheet-handle"></div>
+    <button class="sheet-close" id="detail-close">✕</button>
+    <div id="detail-content"></div>
+    <div class="btn-row">
+      <button class="btn btn-secondary" id="detail-edit-btn">Edit</button>
+    </div>
+  </div>
+</div>
+
+<!-- CLOUD SHEET -->
+<div class="overlay" id="cloud-overlay">
+  <div class="sheet" style="position:relative">
+    <div class="sheet-handle"></div>
+    <button class="sheet-close" id="cloud-sheet-close">✕</button>
+    <div class="sheet-title">Cloud Storage</div>
+    <p style="font-size:13px;color:var(--text3);padding:0 16px 8px;line-height:1.6">
+      Connect to sync your inventory to a spreadsheet in the cloud. Uses your already-signed-in account on this device.
+    </p>
+
+    <div class="cloud-option" id="gdrive-opt">
+      <div class="cloud-icon" style="background:rgba(66,133,244,.12)">
+        <svg width="22" height="22" viewBox="0 0 24 24"><path fill="#4285F4" d="M6.28 4l5.72 9.9L3.07 20H1.5l5.72-9.9L1.5 4zm1.5 0h9l5.72 9.9-2.86 4.95-5.72-9.9z"/><path fill="#34A853" d="M16.92 20H7.08l2.86-4.95h9z"/></svg>
+      </div>
+      <div class="cloud-info">
+        <div class="cloud-name">Google Drive</div>
+        <div class="cloud-desc">Saves as Google Sheet</div>
+      </div>
+      <div class="cloud-status none" id="gdrive-status">tap to connect</div>
+    </div>
+
+    <div class="cloud-option" id="onedrive-opt">
+      <div class="cloud-icon" style="background:rgba(0,120,212,.12)">
+        <svg width="22" height="22" viewBox="0 0 24 24"><path fill="#0078D4" d="M10.5 13.5l3-5.2a5.5 5.5 0 019.4 3.9 4 4 0 01-.1 8.1H5a4 4 0 01-.5-8A6 6 0 0110.5 13.5z"/></svg>
+      </div>
+      <div class="cloud-info">
+        <div class="cloud-name">Microsoft OneDrive</div>
+        <div class="cloud-desc">Saves as Excel workbook</div>
+      </div>
+      <div class="cloud-status none" id="onedrive-status">tap to connect</div>
+    </div>
+
+    <div style="margin:16px 16px 4px;padding:14px;border-radius:var(--radius);background:var(--bg2);border:1px solid var(--bg3)">
+      <p style="font-size:12px;color:var(--text2);line-height:1.7;font-family:var(--mono)">
+        ℹ️ Cloud sync uses the OAuth2 PKCE flow — no passwords are stored in the app. Your spreadsheet is identified by file ID so it is updated (not recreated) on each sync.
+      </p>
+    </div>
+
+    <div id="file-picker-section" style="display:none;padding:0 16px;margin-top:8px">
+      <label class="form-label">spreadsheet file ID</label>
+      <input class="form-input" id="file-id-input" type="text" placeholder="Paste existing file ID, or leave blank to create new"/>
+      <button class="btn btn-primary" id="confirm-file-btn" style="width:100%;margin-top:10px">Connect</button>
+    </div>
+  </div>
+</div>
+
+<!-- LOOKUP DIALOG -->
+<div class="overlay" id="lookup-overlay">
+  <div class="sheet" style="position:relative">
+    <div class="sheet-handle"></div>
+    <button class="sheet-close" id="lookup-close">✕</button>
+    <div class="sheet-title">Lookup by identifier</div>
+    <div class="form-section">
+      <label class="form-label">ISBN / UPC / barcode</label>
+      <input class="form-input" id="lookup-input" type="text" placeholder="Enter code…"/>
+      <button class="btn btn-primary" id="do-lookup-btn" style="width:100%;margin-top:12px">Search</button>
+      <div id="lookup-spinner" style="text-align:center;padding:16px;display:none"><div class="spinner"></div></div>
+      <div id="lookup-results-list" style="margin-top:8px"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ═══════════════════════════════════════════════════════
+//  STATE
+// ═══════════════════════════════════════════════════════
+const DB_KEY = 'shelf_items_v2';
+const CLOUD_KEY = 'shelf_cloud_v1';
+let items = JSON.parse(localStorage.getItem(DB_KEY) || '[]');
+let cloud = JSON.parse(localStorage.getItem(CLOUD_KEY) || 'null') || {provider:null,token:null,fileId:null,lastSync:null};
+let editingId = null;
+let activeFilter = 'all';
+let searchQuery = '';
+let pendingLookupResult = null;
+let camMode = 'barcode';
+let photoCaptureCallback = null;
+let scanActive = false;
+
+// ═══════════════════════════════════════════════════════
+//  UTILS
+// ═══════════════════════════════════════════════════════
+function uid(){ return Date.now().toString(36) + Math.random().toString(36).slice(2,6) }
+function saveItems(){ localStorage.setItem(DB_KEY, JSON.stringify(items)) }
+function saveCloud(){ localStorage.setItem(CLOUD_KEY, JSON.stringify(cloud)) }
+
+function toast(msg, type='', dur=2600){
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className = 'toast show ' + type;
+  clearTimeout(t._tid);
+  t._tid = setTimeout(()=>t.className='toast', dur);
+}
+
+const CAT_EMOJI = {book:'📚',dvd:'📀',game:'🎮',board:'🎲',cd:'💿',other:'📦'};
+
+// ═══════════════════════════════════════════════════════
+//  RENDER
+// ═══════════════════════════════════════════════════════
+function filteredItems(){
+  let list = [...items].reverse();
+  if(activeFilter !== 'all') list = list.filter(i=>i.category===activeFilter);
+  if(searchQuery){
+    const q = searchQuery.toLowerCase();
+    list = list.filter(i=>(i.title||'').toLowerCase().includes(q)||(i.creator||'').toLowerCase().includes(q)||(i.isbn||'').includes(q));
+  }
+  return list;
+}
+
+function renderList(){
+  const el = document.getElementById('items-list');
+  const list = filteredItems();
+  if(!list.length){
+    el.innerHTML = `<div class="empty"><div class="icon">${activeFilter==='all'?'📦':CAT_EMOJI[activeFilter]||'📦'}</div>
+      <h3>${searchQuery?'No results':'Nothing here yet'}</h3>
+      <p>${searchQuery?'Try a different search':'Tap + to add your first item'}</p></div>`;
+    return;
+  }
+  el.innerHTML = list.map(item=>{
+    const thumb = item.image
+      ? `<img class="item-thumb" src="${item.image}" loading="lazy" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">`
+      : '';
+    const emojiDiv = `<div class="item-thumb" style="${item.image?'display:none':''}">${CAT_EMOJI[item.category]||'📦'}</div>`;
+    return `<div class="item-card" data-id="${item.id}">
+      ${thumb}${emojiDiv}
+      <div class="item-info">
+        <div class="item-title">${esc(item.title||'Untitled')}</div>
+        <div class="item-sub">${esc(item.creator||'')}${item.year?' · '+item.year:''}</div>
+        <div class="item-meta">
+          <span class="badge cat-${item.category}">${item.category}</span>
+          ${item.platform?`<span class="badge">${esc(item.platform)}</span>`:''}
+          ${item.condition&&item.condition!=='Good'?`<span class="badge">${esc(item.condition)}</span>`:''}
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+  el.querySelectorAll('.item-card').forEach(c=>c.addEventListener('click',()=>openDetail(c.dataset.id)));
+}
+
+function esc(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;') }
+
+function renderStats(){
+  const total = items.length;
+  const cats = {book:0,dvd:0,game:0,board:0,cd:0,other:0};
+  items.forEach(i=>{ cats[i.category]=(cats[i.category]||0)+1 });
+  const years = items.filter(i=>i.year).map(i=>+i.year);
+  const newest = years.length ? Math.max(...years) : '—';
+  document.getElementById('stats-grid').innerHTML = `
+    <div class="stat-card"><div class="stat-num">${total}</div><div class="stat-lbl">TOTAL ITEMS</div></div>
+    <div class="stat-card"><div class="stat-num">${Object.keys(cats).filter(k=>cats[k]>0).length}</div><div class="stat-lbl">CATEGORIES</div></div>
+    <div class="stat-card"><div class="stat-num">${cats.book}</div><div class="stat-lbl">BOOKS</div></div>
+    <div class="stat-card"><div class="stat-num">${cats.game+cats.board}</div><div class="stat-lbl">GAMES</div></div>`;
+  const maxCat = Math.max(1,...Object.values(cats));
+  const catColors = {book:'#7ab0e0',dvd:'#e07070',game:'#e8c87a',board:'#70c07a',cd:'#b48cdc',other:'#666360'};
+  document.getElementById('cat-bars').innerHTML = Object.entries(cats).map(([k,v])=>`
+    <div class="cat-row">
+      <span class="cat-name">${k}</span>
+      <div class="cat-track"><div class="cat-fill" style="width:${(v/maxCat*100).toFixed(0)}%;background:${catColors[k]}"></div></div>
+      <span class="cat-count">${v}</span>
+    </div>`).join('');
+  const si = document.getElementById('sync-info');
+  if(cloud.provider){
+    si.innerHTML = `Provider: <span>${cloud.provider}</span><br>File ID: <span>${cloud.fileId||'not set'}</span><br>Last sync: <span>${cloud.lastSync?new Date(cloud.lastSync).toLocaleString():'never'}</span>`;
+  } else {
+    si.innerHTML = 'Not connected — tap the cloud icon to connect.';
+  }
+  updateCloudBadge();
+}
+
+function updateCloudBadge(){
+  const b = document.getElementById('cloud-badge');
+  if(cloud.provider && cloud.fileId){
+    b.textContent = cloud.provider==='gdrive'?'google':'onedrive';
+    b.className = 'cloud-badge connected';
+  } else {
+    b.textContent = 'no cloud';
+    b.className = 'cloud-badge';
+  }
+}
+
+// ═══════════════════════════════════════════════════════
+//  TABS
+// ═══════════════════════════════════════════════════════
+document.querySelectorAll('.tab').forEach(t=>{
+  t.addEventListener('click',()=>{
+    document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));
+    t.classList.add('active');
+    const name = t.dataset.tab;
+    document.querySelectorAll('.screen').forEach(s=>s.classList.add('hidden'));
+    document.getElementById('tab-'+name).classList.remove('hidden');
+    if(name==='stats') renderStats();
+  });
+});
+
+// ═══════════════════════════════════════════════════════
+//  SEARCH + FILTER
+// ═══════════════════════════════════════════════════════
+document.getElementById('search-input').addEventListener('input', e=>{
+  searchQuery = e.target.value.trim();
+  renderList();
+});
+document.querySelectorAll('.fpill').forEach(p=>{
+  p.addEventListener('click',()=>{
+    document.querySelectorAll('.fpill').forEach(x=>x.classList.remove('active'));
+    p.classList.add('active');
+    activeFilter = p.dataset.cat;
+    renderList();
+  });
+});
+
+// ═══════════════════════════════════════════════════════
+//  ADD / EDIT SHEET
+// ═══════════════════════════════════════════════════════
+function openAddSheet(prefill={}){
+  editingId = prefill.id || null;
+  document.getElementById('sheet-title').textContent = editingId ? 'Edit item' : 'Add item';
+  setField('f-category', prefill.category||'book');
+  setField('f-title', prefill.title||'');
+  setField('f-creator', prefill.creator||'');
+  setField('f-year', prefill.year||'');
+  setField('f-isbn', prefill.isbn||'');
+  setField('f-platform', prefill.platform||'');
+  setField('f-condition', prefill.condition||'Good');
+  setField('f-notes', prefill.notes||'');
+  setField('f-image', prefill.image||'');
+  document.getElementById('lookup-result').classList.remove('visible');
+  pendingLookupResult = null;
+  const dr = document.getElementById('delete-row');
+  if(editingId){
+    dr.innerHTML = `<div class="btn-row" style="padding-top:0"><button class="btn btn-danger" id="btn-delete">Delete item</button></div>`;
+    document.getElementById('btn-delete').addEventListener('click',()=>{ deleteItem(editingId); closeAdd(); });
+  } else { dr.innerHTML=''; }
+  document.getElementById('add-overlay').classList.add('open');
+}
+
+function closeAdd(){ document.getElementById('add-overlay').classList.remove('open'); editingId=null; }
+function setField(id, val){ const el=document.getElementById(id); if(el) el.value=val; }
+function getField(id){ return (document.getElementById(id)||{}).value||''; }
+
+document.getElementById('add-fab').addEventListener('click',()=>openAddSheet());
+document.getElementById('btn-cancel').addEventListener('click', closeAdd);
+document.getElementById('sheet-close').addEventListener('click', closeAdd);
+
+document.getElementById('btn-save').addEventListener('click', ()=>{
+  const title = getField('f-title').trim();
+  if(!title){ toast('Title is required','err'); return; }
+  const item = {
+    id: editingId || uid(),
+    category: getField('f-category'),
+    title, creator: getField('f-creator'),
+    year: getField('f-year'), isbn: getField('f-isbn'),
+    platform: getField('f-platform'), condition: getField('f-condition'),
+    notes: getField('f-notes'), image: getField('f-image'),
+    addedAt: editingId ? (items.find(i=>i.id===editingId)||{}).addedAt||Date.now() : Date.now(),
+    updatedAt: Date.now()
+  };
+  if(editingId){ items = items.map(i=>i.id===editingId?item:i); }
+  else { items.push(item); }
+  saveItems();
+  closeAdd();
+  renderList();
+  toast(editingId?'Item updated ✓':'Item added ✓','ok');
+  autoSync();
+});
+
+function deleteItem(id){
+  items = items.filter(i=>i.id!==id);
+  saveItems(); renderList();
+  toast('Item deleted','');
+  autoSync();
+}
+
+// ═══════════════════════════════════════════════════════
+//  DETAIL VIEW
+// ═══════════════════════════════════════════════════════
+function openDetail(id){
+  const item = items.find(i=>i.id===id);
+  if(!item) return;
+  const hero = item.image
+    ? `<img class="detail-hero" src="${esc(item.image)}" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">`
+    : '';
+  const heroFallback = `<div class="detail-hero" ${item.image?'style="display:none"':''}>${CAT_EMOJI[item.category]||'📦'}</div>`;
+  const rows = [
+    ['CATEGORY', item.category],
+    item.year ? ['YEAR', item.year] : null,
+    item.isbn ? ['ISBN/UPC', item.isbn] : null,
+    item.platform ? ['FORMAT', item.platform] : null,
+    ['CONDITION', item.condition||'—'],
+    item.notes ? ['NOTES', item.notes] : null,
+    ['ADDED', new Date(item.addedAt).toLocaleDateString()],
+  ].filter(Boolean);
+  document.getElementById('detail-content').innerHTML = `
+    ${hero}${heroFallback}
+    <div class="detail-body">
+      <div class="item-meta" style="margin-bottom:8px"><span class="badge cat-${item.category}">${item.category}</span></div>
+      <div class="detail-title">${esc(item.title||'Untitled')}</div>
+      <div class="detail-creator">${esc(item.creator||'')}</div>
+      <div style="margin-top:16px;border-top:1px solid var(--bg3)">
+        ${rows.map(([k,v])=>`<div class="detail-row"><span class="detail-key">${k}</span><span class="detail-val">${esc(String(v))}</span></div>`).join('')}
+      </div>
+    </div>`;
+  document.getElementById('detail-edit-btn').onclick = ()=>{ closeDetail(); openAddSheet(item); };
+  document.getElementById('detail-overlay').classList.add('open');
+}
+function closeDetail(){ document.getElementById('detail-overlay').classList.remove('open'); }
+document.getElementById('detail-close').addEventListener('click', closeDetail);
+
+// ═══════════════════════════════════════════════════════
+//  CAMERA / BARCODE
+// ═══════════════════════════════════════════════════════
+document.getElementById('open-camera-btn').addEventListener('click', openCamera);
+document.getElementById('cam-close').addEventListener('click', closeCamera);
+
+function openCamera(){
+  closeAdd();
+  camMode = 'barcode';
+  updateCamModeUI();
+  document.getElementById('cam-overlay').classList.add('open');
+  startBarcode();
+}
+
+function closeCamera(){
+  stopBarcode();
+  document.getElementById('cam-overlay').classList.remove('open');
+  // reopen add sheet
+  setTimeout(()=>document.getElementById('add-overlay').classList.add('open'),100);
+}
+
+function updateCamModeUI(){
+  const isBarcode = camMode==='barcode';
+  document.getElementById('mode-barcode').classList.toggle('active', isBarcode);
+  document.getElementById('mode-cover').classList.toggle('active', !isBarcode);
+  document.getElementById('scan-frame-box').style.display = isBarcode?'block':'none';
+  document.getElementById('scan-hint').textContent = isBarcode?'point at barcode':'frame the cover';
+  document.getElementById('photo-capture-btn').style.display = isBarcode?'none':'block';
+  if(isBarcode){ startBarcode(); }
+  else { stopBarcode(); startCoverCamera(); }
+}
+
+document.getElementById('mode-barcode').addEventListener('click',()=>{ camMode='barcode'; updateCamModeUI(); });
+document.getElementById('mode-cover').addEventListener('click',()=>{ camMode='cover'; updateCamModeUI(); });
+
+let coverVideoEl = null;
+function startCoverCamera(){
+  if(coverVideoEl) return;
+  coverVideoEl = document.createElement('video');
+  coverVideoEl.autoplay=true; coverVideoEl.playsInline=true; coverVideoEl.muted=true;
+  document.getElementById('barcode-scanner').prepend(coverVideoEl);
+  navigator.mediaDevices.getUserMedia({video:{facingMode:'environment',width:{ideal:1280},height:{ideal:720}}})
+    .then(s=>{ coverVideoEl.srcObject=s; })
+    .catch(()=>toast('Camera access denied','err'));
+}
+
+document.getElementById('photo-capture-btn').addEventListener('click',()=>{
+  if(!coverVideoEl) return;
+  const canvas = document.createElement('canvas');
+  canvas.width=coverVideoEl.videoWidth; canvas.height=coverVideoEl.videoHeight;
+  canvas.getContext('2d').drawImage(coverVideoEl,0,0);
+  const dataUrl = canvas.toDataURL('image/jpeg',0.85);
+  setField('f-image', dataUrl);
+  toast('Cover photo captured','ok');
+  closeCamera();
+});
+
+function startBarcode(){
+  if(scanActive) return;
+  const el = document.getElementById('barcode-scanner');
+  scanActive = true;
+  Quagga.init({
+    inputStream:{type:'LiveStream',target:el,constraints:{facingMode:'environment',width:640,height:480}},
+    locator:{patchSize:'medium',halfSample:true},
+    numOfWorkers:2,
+    decoder:{readers:['ean_reader','ean_8_reader','upc_reader','upc_e_reader','code_128_reader','code_39_reader']},
+    locate:true
+  }, err=>{
+    if(err){ console.warn('Quagga init error',err); return; }
+    Quagga.start();
+  });
+  Quagga.offDetected();
+  Quagga.onDetected(result=>{
+    const code = result.codeResult.code;
+    if(!code) return;
+    stopBarcode();
+    closeCamera();
+    setField('f-isbn', code);
+    toast('Barcode: '+code);
+    doLookup(code, true);
+  });
+}
+
+function stopBarcode(){
+  if(!scanActive) return;
+  scanActive = false;
+  try{ Quagga.stop(); } catch(e){}
+  // stop cover video too
+  if(coverVideoEl){
+    const tracks = coverVideoEl.srcObject?.getTracks()||[];
+    tracks.forEach(t=>t.stop());
+    coverVideoEl.remove(); coverVideoEl=null;
+  }
+}
+
+// ═══════════════════════════════════════════════════════
+//  LOOKUP (Open Library + UPC ItemDb)
+// ═══════════════════════════════════════════════════════
+document.getElementById('manual-lookup-btn').addEventListener('click',()=>{
+  document.getElementById('add-overlay').classList.remove('open');
+  document.getElementById('lookup-overlay').classList.add('open');
+  document.getElementById('lookup-input').focus();
+});
+document.getElementById('lookup-close').addEventListener('click',()=>{
+  document.getElementById('lookup-overlay').classList.remove('open');
+  document.getElementById('add-overlay').classList.add('open');
+});
+document.getElementById('do-lookup-btn').addEventListener('click',()=>{
+  const val = document.getElementById('lookup-input').value.trim();
+  if(!val){ toast('Enter a code first','err'); return; }
+  document.getElementById('lookup-results-list').innerHTML='';
+  document.getElementById('lookup-spinner').style.display='block';
+  doLookup(val, false);
+});
+
+async function doLookup(code, inline){
+  // Try to determine if ISBN (book) or UPC (other)
+  const isISBN = /^\d{10,13}$/.test(code.replace(/-/g,''));
+
+  let result = null;
+  if(isISBN){
+    result = await lookupOpenLibrary(code);
+  }
+  if(!result){
+    result = await lookupUPCItemdb(code);
+  }
+
+  if(!inline){
+    document.getElementById('lookup-spinner').style.display='none';
+  }
+
+  if(!result){
+    if(!inline) document.getElementById('lookup-results-list').innerHTML='<p style="font-size:13px;color:var(--text3);padding:8px 0">No results found. Try entering the title manually.</p>';
+    else toast('No lookup results','');
+    return;
+  }
+
+  pendingLookupResult = result;
+
+  if(inline){
+    // show inline in add sheet
+    document.getElementById('lr-title').textContent = result.title||'Unknown';
+    document.getElementById('lr-sub').textContent = [result.creator, result.year].filter(Boolean).join(' · ');
+    document.getElementById('lookup-result').classList.add('visible');
+  } else {
+    // show in lookup sheet
+    document.getElementById('lookup-results-list').innerHTML = `
+      <div class="lookup-result visible">
+        <div class="lr-title">${esc(result.title||'Unknown')}</div>
+        <div class="lr-sub">${esc([result.creator,result.year].filter(Boolean).join(' · '))}</div>
+        <span class="lr-apply" id="lr-apply2">↓ use this result</span>
+      </div>`;
+    document.getElementById('lr-apply2').addEventListener('click',()=>{
+      applyLookup(pendingLookupResult);
+      document.getElementById('lookup-overlay').classList.remove('open');
+      document.getElementById('add-overlay').classList.add('open');
+    });
+  }
+}
+
+document.getElementById('lr-apply').addEventListener('click',()=>{ if(pendingLookupResult) applyLookup(pendingLookupResult); });
+
+function applyLookup(r){
+  if(r.title) setField('f-title', r.title);
+  if(r.creator) setField('f-creator', r.creator);
+  if(r.year) setField('f-year', r.year);
+  if(r.image) setField('f-image', r.image);
+  if(r.category) setField('f-category', r.category);
+  document.getElementById('lookup-result').classList.remove('visible');
+  toast('Fields filled in','ok');
+}
+
+async function lookupOpenLibrary(isbn){
+  try{
+    const clean = isbn.replace(/-/g,'');
+    const r = await fetch(`https://openlibrary.org/api/books?bibkeys=ISBN:${clean}&format=json&jscmd=data`);
+    const d = await r.json();
+    const key = `ISBN:${clean}`;
+    if(!d[key]) return null;
+    const b = d[key];
+    const author = (b.authors||[])[0]?.name||'';
+    const year = b.publish_date ? b.publish_date.match(/\d{4}/)?.[0]||'' : '';
+    const cover = b.cover?.medium||b.cover?.large||'';
+    return {title:b.title||'',creator:author,year,image:cover,category:'book'};
+  }catch{ return null; }
+}
+
+async function lookupUPCItemdb(upc){
+  try{
+    const r = await fetch(`https://api.upcitemdb.com/prod/trial/lookup?upc=${encodeURIComponent(upc)}`);
+    const d = await r.json();
+    const item = (d.items||[])[0];
+    if(!item) return null;
+    const title = item.title||item.description||'';
+    const image = (item.images||[])[0]||'';
+    const cat = guessCategoryFromTitle(title, item.category||'');
+    return {title, creator:item.brand||'', year:'', image, category:cat};
+  }catch{ return null; }
+}
+
+function guessCategoryFromTitle(title='', cat=''){
+  const t = (title+' '+cat).toLowerCase();
+  if(/\b(book|novel|manga|comic|guide|manual)\b/.test(t)) return 'book';
+  if(/\b(dvd|blu.?ray|uhd|movie|film)\b/.test(t)) return 'dvd';
+  if(/\b(cd|album|vinyl|music|soundtrack)\b/.test(t)) return 'cd';
+  if(/\b(board game|tabletop|card game|jigsaw)\b/.test(t)) return 'board';
+  if(/\b(video game|game|ps[1-5]|xbox|nintendo|switch|playstation)\b/.test(t)) return 'game';
+  return 'other';
+}
+
+// ═══════════════════════════════════════════════════════
+//  CLOUD CONNECT
+// ═══════════════════════════════════════════════════════
+document.getElementById('cloud-btn').addEventListener('click',()=>document.getElementById('cloud-overlay').classList.add('open'));
+document.getElementById('cloud-sheet-close').addEventListener('click',()=>document.getElementById('cloud-overlay').classList.remove('open'));
+
+document.getElementById('gdrive-opt').addEventListener('click',()=>promptCloudSetup('gdrive'));
+document.getElementById('onedrive-opt').addEventListener('click',()=>promptCloudSetup('onedrive'));
+
+function promptCloudSetup(provider){
+  cloud.provider = provider;
+  document.getElementById('file-picker-section').style.display='block';
+  document.getElementById('file-id-input').value = cloud.fileId||'';
+  saveCloud();
+  updateCloudBadge();
+  document.getElementById('gdrive-status').textContent = provider==='gdrive'?'selected':'';
+  document.getElementById('onedrive-status').textContent = provider==='onedrive'?'selected':'';
+  document.getElementById('gdrive-status').className = 'cloud-status'+(provider==='gdrive'?' ok':' none');
+  document.getElementById('onedrive-status').className = 'cloud-status'+(provider==='onedrive'?' ok':' none');
+}
+
+document.getElementById('confirm-file-btn').addEventListener('click',()=>{
+  const fid = document.getElementById('file-id-input').value.trim();
+  cloud.fileId = fid || null;
+  saveCloud(); updateCloudBadge();
+  document.getElementById('cloud-overlay').classList.remove('open');
+  toast(cloud.fileId?'Cloud connected ✓':'Provider set — sync will create new file','ok');
+});
+
+// ═══════════════════════════════════════════════════════
+//  CLOUD SYNC (Google Drive via gapi / OneDrive via msgraph)
+// ═══════════════════════════════════════════════════════
+document.getElementById('sync-now-btn').addEventListener('click', manualSync);
+
+function autoSync(){
+  if(cloud.provider && cloud.fileId) syncToCloud().catch(()=>{});
+}
+
+async function manualSync(){
+  if(!cloud.provider){ toast('No cloud connected','err'); return; }
+  toast('Syncing…');
+  try{
+    await syncToCloud();
+    toast('Synced ✓','ok');
+    renderStats();
+  } catch(e){
+    toast('Sync failed: '+e.message,'err');
+  }
+}
+
+// Builds CSV from items
+function buildCSV(){
+  const headers = ['id','category','title','creator','year','isbn','platform','condition','notes','image','addedAt','updatedAt'];
+  const rows = [headers.join(',')];
+  items.forEach(item=>{
+    rows.push(headers.map(h=>{
+      const v = String(item[h]||'').replace(/"/g,'""');
+      return `"${v}"`;
+    }).join(','));
+  });
+  return rows.join('\n');
+}
+
+async function syncToCloud(){
+  if(!cloud.provider) throw new Error('No provider');
+  const csv = buildCSV();
+  const blob = new Blob([csv],{type:'text/csv'});
+
+  if(cloud.provider==='gdrive'){
+    await syncGoogleDrive(blob);
+  } else {
+    await syncOneDrive(blob);
+  }
+  cloud.lastSync = Date.now();
+  saveCloud();
+}
+
+// Google Drive — uses gapi (loaded lazily) or falls back to instructions
+async function syncGoogleDrive(blob){
+  // We use the REST API with the user's browser-native Google sign-in via prompt
+  // If token present, try it; otherwise open OAuth
+  if(!cloud.token){
+    toast('Opening Google sign-in…');
+    await googleOAuth();
+  }
+  const method = cloud.fileId ? 'PATCH' : 'POST';
+  const url = cloud.fileId
+    ? `https://www.googleapis.com/upload/drive/v3/files/${cloud.fileId}?uploadType=media`
+    : `https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart`;
+
+  let body, headers;
+  if(cloud.fileId){
+    body = blob;
+    headers = {'Authorization':'Bearer '+cloud.token,'Content-Type':'text/csv'};
+  } else {
+    const meta = JSON.stringify({name:'shelf-inventory.csv',mimeType:'text/csv'});
+    const fd = new FormData();
+    fd.append('metadata', new Blob([meta],{type:'application/json'}));
+    fd.append('file', blob);
+    body = fd;
+    headers = {'Authorization':'Bearer '+cloud.token};
+  }
+
+  const r = await fetch(url,{method,headers,body});
+  if(r.status===401){ cloud.token=null; saveCloud(); throw new Error('Auth expired — sync again to re-authenticate'); }
+  if(!r.ok){ const t=await r.text(); throw new Error('Drive error: '+r.status+' '+t.slice(0,100)); }
+  if(!cloud.fileId){
+    const d = await r.json();
+    cloud.fileId = d.id;
+    saveCloud(); updateCloudBadge();
+  }
+}
+
+async function syncOneDrive(blob){
+  if(!cloud.token){
+    toast('Opening Microsoft sign-in…');
+    await msOAuth();
+  }
+  const filename = 'shelf-inventory.csv';
+  const uploadUrl = cloud.fileId
+    ? `https://graph.microsoft.com/v1.0/me/drive/items/${cloud.fileId}/content`
+    : `https://graph.microsoft.com/v1.0/me/drive/root:/${filename}:/content`;
+
+  const r = await fetch(uploadUrl,{
+    method:'PUT',
+    headers:{'Authorization':'Bearer '+cloud.token,'Content-Type':'text/csv'},
+    body: blob
+  });
+  if(r.status===401){ cloud.token=null; saveCloud(); throw new Error('Auth expired — sync again to re-authenticate'); }
+  if(!r.ok){ throw new Error('OneDrive error: '+r.status); }
+  if(!cloud.fileId){
+    const d = await r.json();
+    cloud.fileId = d.id;
+    saveCloud(); updateCloudBadge();
+  }
+}
+
+// OAuth2 PKCE helpers
+async function googleOAuth(){
+  const clientId = ''; // user fills in or uses the manual token approach
+  if(!clientId){
+    // Fallback: tell user to paste token
+    const tok = prompt('Paste a Google OAuth access token (get one from developers.google.com/oauthplayground with Drive scope):');
+    if(!tok) throw new Error('No token provided');
+    cloud.token = tok.trim();
+    saveCloud(); return;
+  }
+  const tok = await pkceFlow('https://accounts.google.com/o/oauth2/v2/auth','https://oauth2.googleapis.com/token',
+    clientId,'https://www.googleapis.com/auth/drive.file');
+  cloud.token = tok; saveCloud();
+}
+
+async function msOAuth(){
+  const clientId = '';
+  if(!clientId){
+    const tok = prompt('Paste a Microsoft Graph access token (get one from graph.microsoft.com/v1.0/me with Files.ReadWrite scope):');
+    if(!tok) throw new Error('No token provided');
+    cloud.token = tok.trim();
+    saveCloud(); return;
+  }
+  const tok = await pkceFlow(
+    'https://login.microsoftonline.com/common/oauth2/v2.0/authorize',
+    'https://login.microsoftonline.com/common/oauth2/v2.0/token',
+    clientId,'Files.ReadWrite');
+  cloud.token = tok; saveCloud();
+}
+
+async function pkceFlow(authUrl, tokenUrl, clientId, scope){
+  const verifier = randomBase64(32);
+  const challenge = await sha256Base64url(verifier);
+  const state = randomBase64(8);
+  const redirect = location.href.split('?')[0];
+  const params = new URLSearchParams({response_type:'code',client_id:clientId,redirect_uri:redirect,
+    scope,state,code_challenge:challenge,code_challenge_method:'S256'});
+  sessionStorage.setItem('pkce_verifier', verifier);
+  sessionStorage.setItem('pkce_tokenUrl', tokenUrl);
+  sessionStorage.setItem('pkce_clientId', clientId);
+  sessionStorage.setItem('pkce_redirect', redirect);
+  location.href = authUrl+'?'+params;
+}
+
+async function handleOAuthCallback(){
+  const params = new URLSearchParams(location.search);
+  const code = params.get('code');
+  if(!code) return;
+  history.replaceState({},document.title,location.pathname);
+  const verifier = sessionStorage.getItem('pkce_verifier');
+  const tokenUrl = sessionStorage.getItem('pkce_tokenUrl');
+  const clientId = sessionStorage.getItem('pkce_clientId');
+  const redirect = sessionStorage.getItem('pkce_redirect');
+  if(!verifier) return;
+  const r = await fetch(tokenUrl,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},
+    body:new URLSearchParams({grant_type:'authorization_code',code,client_id:clientId,redirect_uri:redirect,code_verifier:verifier})});
+  const d = await r.json();
+  if(d.access_token){ cloud.token=d.access_token; saveCloud(); toast('Cloud authenticated ✓','ok'); }
+}
+
+function randomBase64(n){
+  const arr = new Uint8Array(n);
+  crypto.getRandomValues(arr);
+  return btoa(String.fromCharCode(...arr)).replace(/\+/g,'-').replace(/\//g,'_').replace(/=/g,'');
+}
+async function sha256Base64url(str){
+  const buf = await crypto.subtle.digest('SHA-256',new TextEncoder().encode(str));
+  return btoa(String.fromCharCode(...new Uint8Array(buf))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=/g,'');
+}
+
+// ═══════════════════════════════════════════════════════
+//  INIT
+// ═══════════════════════════════════════════════════════
+if('serviceWorker' in navigator){
+  navigator.serviceWorker.register('./sw.js').catch(()=>{});
+}
+handleOAuthCallback();
+updateCloudBadge();
+renderList();
+</script>
+</body>
+</html>
