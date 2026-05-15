@@ -276,7 +276,7 @@ textarea.form-input{resize:vertical;min-height:72px}
 <body>
 <div id="app">
   <header>
-    <div class="logo">shelf <span style="font-size:10px;color:var(--text3);font-family:var(--mono);font-weight:400;vertical-align:middle;letter-spacing:0">v10</span><span>personal inventory</span></div>
+    <div class="logo">shelf <span style="font-size:10px;color:var(--text3);font-family:var(--mono);font-weight:400;vertical-align:middle;letter-spacing:0">v11</span><span>personal inventory</span></div>
     <span class="cloud-badge" id="cloud-badge">no cloud</span>
     <button class="hdr-btn" id="select-btn" title="Select items">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="9" cy="21" r="1"/><circle cx="15" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 001.94 1.61h9.72a2 2 0 001.94-1.51l1.38-7.49H6"/></svg>
@@ -561,6 +561,50 @@ textarea.form-input{resize:vertical;min-height:72px}
       Several databases returned different results for this code. Pick the one that's correct.
     </p>
     <div class="form-section" id="picker-results"></div>
+  </div>
+</div>
+
+<!-- VISION SCAN OVERLAY -->
+<div class="overlay" id="vision-overlay">
+  <div class="sheet" style="position:relative">
+    <div class="sheet-handle"></div>
+    <button class="sheet-close" id="vision-close">✕</button>
+    <div class="sheet-title" id="vision-title">Photograph the book</div>
+    <div style="padding:0 16px 16px">
+      <p style="font-size:13px;color:var(--text2);line-height:1.6;margin-bottom:14px" id="vision-instructions">
+        No database match was found for this ISBN. Take a photo of the <strong style="color:var(--text)">front cover</strong>, then the <strong style="color:var(--text)">back cover</strong> — Claude will read the title, author, and description from the images.
+      </p>
+
+      <!-- Step indicators -->
+      <div style="display:flex;gap:8px;margin-bottom:16px">
+        <div class="vstep active" id="vstep-front" style="flex:1;padding:8px;border-radius:var(--radius-sm);background:var(--bg2);border:1px solid var(--accent);text-align:center;font-size:12px;font-family:var(--mono);color:var(--accent)">1 · front cover</div>
+        <div class="vstep" id="vstep-back" style="flex:1;padding:8px;border-radius:var(--radius-sm);background:var(--bg2);border:1px solid var(--bg4);text-align:center;font-size:12px;font-family:var(--mono);color:var(--text3)">2 · back cover</div>
+        <div class="vstep" id="vstep-analyse" style="flex:1;padding:8px;border-radius:var(--radius-sm);background:var(--bg2);border:1px solid var(--bg4);text-align:center;font-size:12px;font-family:var(--mono);color:var(--text3)">3 · reading</div>
+      </div>
+
+      <!-- Photo preview area -->
+      <div style="display:flex;gap:8px;margin-bottom:14px">
+        <div id="vphoto-front-wrap" style="flex:1;aspect-ratio:3/4;border-radius:var(--radius-sm);background:var(--bg2);border:1px dashed var(--bg4);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;overflow:hidden;position:relative">
+          <img id="vphoto-front-img" src="" style="display:none;width:100%;height:100%;object-fit:cover;position:absolute;inset:0"/>
+          <span style="font-size:24px;opacity:.4" id="vphoto-front-icon">📷</span>
+          <span style="font-size:11px;color:var(--text3);font-family:var(--mono)" id="vphoto-front-lbl">front</span>
+        </div>
+        <div id="vphoto-back-wrap" style="flex:1;aspect-ratio:3/4;border-radius:var(--radius-sm);background:var(--bg2);border:1px dashed var(--bg4);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;overflow:hidden;position:relative">
+          <img id="vphoto-back-img" src="" style="display:none;width:100%;height:100%;object-fit:cover;position:absolute;inset:0"/>
+          <span style="font-size:24px;opacity:.4" id="vphoto-back-icon">📷</span>
+          <span style="font-size:11px;color:var(--text3);font-family:var(--mono)" id="vphoto-back-lbl">back</span>
+        </div>
+      </div>
+
+      <!-- Camera capture button -->
+      <button class="btn btn-primary" id="vision-capture-btn" style="width:100%;margin-bottom:8px">📷 Take front cover photo</button>
+      <button class="btn btn-secondary" id="vision-skip-back-btn" style="width:100%;margin-bottom:8px;display:none">Skip back cover →</button>
+      <div id="vision-spinner" style="display:none;text-align:center;padding:20px">
+        <div class="spinner" style="width:28px;height:28px;border-width:3px;margin:0 auto 10px"></div>
+        <p style="font-size:13px;color:var(--text2);font-family:var(--mono)">Reading book details…</p>
+      </div>
+      <div id="vision-error" style="display:none;font-size:13px;color:var(--danger);padding:8px 0"></div>
+    </div>
   </div>
 </div>
 
@@ -1174,8 +1218,14 @@ async function doLookup(code, inline){
   if(!inline) document.getElementById('lookup-spinner').style.display='none';
 
   if(!results.length){
-    if(inline) toast('No results — fill in manually','');
-    else document.getElementById('lookup-results-list').innerHTML='<p style="font-size:13px;color:var(--text3);padding:8px 0">No results found across all databases. Try entering the title manually.</p>';
+    if(isISBN){
+      // For unmatched ISBNs, offer the vision scan fallback
+      if(!inline) document.getElementById('lookup-results-list').innerHTML='';
+      openVisionScan(code, inline);
+    } else {
+      if(inline) toast('No results — fill in manually','');
+      else document.getElementById('lookup-results-list').innerHTML='<p style="font-size:13px;color:var(--text3);padding:8px 0">No results found across all databases. Try entering the title manually.</p>';
+    }
     return;
   }
 
@@ -1693,6 +1743,227 @@ function splitCSVRow(line){
   }
   result.push(cur);
   return result;
+}
+
+// ═══════════════════════════════════════════════════════
+//  VISION SCAN (Claude API — reads book cover photos)
+// ═══════════════════════════════════════════════════════
+let visionState = { step: 'front', frontDataUrl: null, backDataUrl: null, isbn: null, inline: false };
+let visionVideoEl = null;
+
+function openVisionScan(isbn, inline){
+  visionState = { step: 'front', frontDataUrl: null, backDataUrl: null, isbn, inline };
+  updateVisionUI();
+  // Close lookup sheet if open, keep add sheet hidden
+  document.getElementById('lookup-overlay').classList.remove('open');
+  document.getElementById('add-overlay').classList.remove('open');
+  document.getElementById('vision-overlay').classList.add('open');
+}
+
+function closeVisionScan(){
+  stopVisionCamera();
+  document.getElementById('vision-overlay').classList.remove('open');
+  document.getElementById('add-overlay').classList.add('open');
+  document.getElementById('add-sheet').scrollTop = 0;
+}
+
+document.getElementById('vision-close').addEventListener('click', closeVisionScan);
+
+document.getElementById('vision-skip-back-btn').addEventListener('click', ()=>{
+  visionState.step = 'analyse';
+  updateVisionUI();
+  runVisionAnalysis();
+});
+
+function updateVisionUI(){
+  const s = visionState.step;
+  // Step indicators
+  ['front','back','analyse'].forEach((k,i)=>{
+    const el = document.getElementById('vstep-'+k);
+    const active = (k===s) || (s==='analyse' && i<2);
+    el.style.borderColor = active ? 'var(--accent)' : 'var(--bg4)';
+    el.style.color = active ? 'var(--accent)' : 'var(--text3)';
+  });
+  const captureBtn = document.getElementById('vision-capture-btn');
+  const skipBtn = document.getElementById('vision-skip-back-btn');
+  const spinner = document.getElementById('vision-spinner');
+  const errEl = document.getElementById('vision-error');
+  errEl.style.display = 'none';
+  spinner.style.display = 'none';
+
+  if(s === 'front'){
+    document.getElementById('vision-title').textContent = 'Front cover photo';
+    document.getElementById('vision-instructions').innerHTML = 'Point your camera at the <strong style="color:var(--text)">front cover</strong> so the title and author are visible, then tap the button below.';
+    captureBtn.textContent = '📷 Capture front cover';
+    captureBtn.style.display = '';
+    skipBtn.style.display = 'none';
+    startVisionCamera();
+  } else if(s === 'back'){
+    document.getElementById('vision-title').textContent = 'Back cover photo';
+    document.getElementById('vision-instructions').innerHTML = 'Now point at the <strong style="color:var(--text)">back cover</strong> — the description and author bio help Claude read more details.';
+    captureBtn.textContent = '📷 Capture back cover';
+    captureBtn.style.display = '';
+    skipBtn.style.display = '';
+    startVisionCamera();
+  } else if(s === 'analyse'){
+    document.getElementById('vision-title').textContent = 'Reading book details…';
+    captureBtn.style.display = 'none';
+    skipBtn.style.display = 'none';
+    spinner.style.display = 'block';
+    stopVisionCamera();
+  }
+}
+
+function startVisionCamera(){
+  // Reuse existing stream if already running
+  if(visionVideoEl && visionVideoEl.srcObject) return;
+  stopVisionCamera();
+  visionVideoEl = document.createElement('video');
+  visionVideoEl.autoplay = true; visionVideoEl.playsInline = true; visionVideoEl.muted = true;
+  visionVideoEl.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;object-fit:cover;border-radius:6px';
+  // Inject behind the preview images, inside the active photo slot
+  const wrap = document.getElementById(visionState.step==='front'?'vphoto-front-wrap':'vphoto-back-wrap');
+  wrap.appendChild(visionVideoEl);
+  navigator.mediaDevices.getUserMedia({video:{facingMode:'environment',width:{ideal:1280},height:{ideal:720}}})
+    .then(s=>{ visionVideoEl.srcObject = s; visionVideoEl.play().catch(()=>{}); })
+    .catch(()=>toast('Camera access denied','err'));
+}
+
+function stopVisionCamera(){
+  if(!visionVideoEl) return;
+  (visionVideoEl.srcObject?.getTracks()||[]).forEach(t=>t.stop());
+  visionVideoEl.remove();
+  visionVideoEl = null;
+}
+
+document.getElementById('vision-capture-btn').addEventListener('click', ()=>{
+  if(!visionVideoEl || !visionVideoEl.srcObject) { toast('Camera not ready','err'); return; }
+  const canvas = document.createElement('canvas');
+  canvas.width = visionVideoEl.videoWidth || 1280;
+  canvas.height = visionVideoEl.videoHeight || 720;
+  canvas.getContext('2d').drawImage(visionVideoEl, 0, 0);
+  const dataUrl = canvas.toDataURL('image/jpeg', 0.88);
+  stopVisionCamera();
+
+  if(visionState.step === 'front'){
+    visionState.frontDataUrl = dataUrl;
+    // Show thumbnail
+    const img = document.getElementById('vphoto-front-img');
+    img.src = dataUrl; img.style.display = 'block';
+    document.getElementById('vphoto-front-icon').style.display = 'none';
+    document.getElementById('vphoto-front-lbl').style.display = 'none';
+    visionState.step = 'back';
+    updateVisionUI();
+  } else if(visionState.step === 'back'){
+    visionState.backDataUrl = dataUrl;
+    const img = document.getElementById('vphoto-back-img');
+    img.src = dataUrl; img.style.display = 'block';
+    document.getElementById('vphoto-back-icon').style.display = 'none';
+    document.getElementById('vphoto-back-lbl').style.display = 'none';
+    visionState.step = 'analyse';
+    updateVisionUI();
+    runVisionAnalysis();
+  }
+});
+
+async function runVisionAnalysis(){
+  const errEl = document.getElementById('vision-error');
+  errEl.style.display = 'none';
+
+  // Build message content — always include front, optionally back
+  const imageContent = [];
+  if(visionState.frontDataUrl){
+    imageContent.push({
+      type: 'image',
+      source: { type: 'base64', media_type: 'image/jpeg', data: visionState.frontDataUrl.split(',')[1] }
+    });
+  }
+  if(visionState.backDataUrl){
+    imageContent.push({
+      type: 'image',
+      source: { type: 'base64', media_type: 'image/jpeg', data: visionState.backDataUrl.split(',')[1] }
+    });
+  }
+  imageContent.push({
+    type: 'text',
+    text: `These are photos of a physical book (ISBN: ${visionState.isbn||'unknown'}).
+Extract the following and respond ONLY with a valid JSON object, no markdown, no explanation:
+{
+  "title": "full book title",
+  "subtitle": "subtitle if present or empty string",
+  "creator": "primary author name",
+  "year": "4-digit publication year or empty string",
+  "publisher": "publisher name or empty string",
+  "description": "1-2 sentence summary from back cover or empty string",
+  "image_side": "front_cover"
+}
+If a field is not visible or unclear, use an empty string. Do not guess.`
+  });
+
+  try{
+    const resp = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 512,
+        messages: [{ role: 'user', content: imageContent }]
+      })
+    });
+
+    if(!resp.ok){
+      const err = await resp.json().catch(()=>({error:{message:'API error '+resp.status}}));
+      throw new Error(err.error?.message || 'API error '+resp.status);
+    }
+
+    const data = await resp.json();
+    const raw = (data.content||[]).map(b=>b.text||'').join('');
+
+    // Strip any accidental markdown fences
+    const clean = raw.replace(/```json|```/g,'').trim();
+    let parsed;
+    try{ parsed = JSON.parse(clean); }
+    catch(e){ throw new Error('Could not parse response — try again'); }
+
+    // Build a full title (title + subtitle)
+    const fullTitle = [parsed.title, parsed.subtitle].filter(Boolean).join(': ');
+
+    const result = {
+      title: fullTitle || parsed.title || '',
+      creator: parsed.creator || '',
+      year: parsed.year || '',
+      platform: parsed.publisher || '',
+      notes: parsed.description || '',
+      image: visionState.frontDataUrl || '',
+      category: 'book',
+      source: 'Vision scan (Claude)'
+    };
+
+    // Done — close vision overlay, apply result, open add sheet
+    document.getElementById('vision-spinner').style.display = 'none';
+    closeVisionScan();
+    applyLookup(result);
+    toast('Book details read ✓', 'ok');
+
+    // Also show confirmation banner if inline
+    if(visionState.inline){
+      document.getElementById('lr-title').textContent = result.title||'Unknown';
+      document.getElementById('lr-sub').textContent = ['Vision scan', result.creator, result.year].filter(Boolean).join(' · ');
+      document.getElementById('lookup-result').classList.add('visible');
+      setTimeout(()=>document.getElementById('lookup-result').classList.remove('visible'), 4000);
+    }
+
+  } catch(e){
+    document.getElementById('vision-spinner').style.display = 'none';
+    errEl.textContent = 'Error: ' + e.message + '. Tap × to go back and enter manually.';
+    errEl.style.display = 'block';
+    // Re-show capture button to let user try again
+    document.getElementById('vision-capture-btn').textContent = '↺ Try again';
+    document.getElementById('vision-capture-btn').style.display = '';
+    visionState.step = 'front';
+    visionState.frontDataUrl = null;
+    visionState.backDataUrl = null;
+  }
 }
 
 // ═══════════════════════════════════════════════════════
