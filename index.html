@@ -752,9 +752,8 @@ document.getElementById('cam-close').addEventListener('click', closeCamera);
 function openCamera(){
   closeAdd();
   camMode = 'barcode';
-  updateCamModeUI();
   document.getElementById('cam-overlay').classList.add('open');
-  startBarcode();
+  updateCamModeUI(); // updateCamModeUI calls startBarcode internally
 }
 
 function closeCamera(){
@@ -771,8 +770,13 @@ function updateCamModeUI(){
   document.getElementById('scan-frame-box').style.display = isBarcode?'block':'none';
   document.getElementById('scan-hint').textContent = isBarcode?'point at barcode':'frame the cover';
   document.getElementById('photo-capture-btn').style.display = isBarcode?'none':'block';
-  if(isBarcode){ startBarcode(); }
-  else { stopBarcode(); startCoverCamera(); }
+  if(isBarcode){
+    stopCoverCamera();
+    startBarcode();
+  } else {
+    stopBarcodeOnly();
+    startCoverCamera();
+  }
 }
 
 document.getElementById('mode-barcode').addEventListener('click',()=>{ camMode='barcode'; updateCamModeUI(); });
@@ -826,16 +830,26 @@ function startBarcode(){
   });
 }
 
-function stopBarcode(){
+// Stop only Quagga barcode scanner, leave cover video alone
+function stopBarcodeOnly(){
   if(!scanActive) return;
   scanActive = false;
   try{ Quagga.stop(); } catch(e){}
-  // stop cover video too
-  if(coverVideoEl){
-    const tracks = coverVideoEl.srcObject?.getTracks()||[];
-    tracks.forEach(t=>t.stop());
-    coverVideoEl.remove(); coverVideoEl=null;
-  }
+}
+
+// Stop only the cover video stream, leave Quagga alone
+function stopCoverCamera(){
+  if(!coverVideoEl) return;
+  const tracks = coverVideoEl.srcObject?.getTracks()||[];
+  tracks.forEach(t=>t.stop());
+  coverVideoEl.remove();
+  coverVideoEl = null;
+}
+
+// Stop everything — used when closing the camera overlay entirely
+function stopBarcode(){
+  stopBarcodeOnly();
+  stopCoverCamera();
 }
 
 // ═══════════════════════════════════════════════════════
@@ -859,27 +873,25 @@ document.getElementById('do-lookup-btn').addEventListener('click',()=>{
 });
 
 async function doLookup(code, inline){
-  // Open Library has the largest database and no rate limit — always try first.
-  // UPC ItemDB is fallback for non-book barcodes, with rate-limit detection.
+  // Lookup chain (each silently skipped on failure/no-result):
+  // 1. Open Library  — books & ISBN, no rate limit, huge DB
+  // 2. GameUPC       — board games specifically, UPC→BGG (free test key)
+  // 3. UPC ItemDB    — general products (100/day free limit)
+  // 4. BGG XML API   — keyword search fallback for any board-game-like barcode
+  // 5. Open Product Data — truly generic last resort (keyless, EU/global)
   let result = null;
 
   result = await lookupOpenLibrary(code);
+  if(!result) result = await lookupGameUPC(code);
+  if(!result) result = await lookupUPCItemdb(code);
+  if(!result) result = await lookupBGGByKeyword(code);
+  if(!result) result = await lookupOpenProductData(code);
+
+  if(!inline) document.getElementById('lookup-spinner').style.display='none';
 
   if(!result){
-    result = await lookupUPCItemdb(code);
-  }
-
-  // If still nothing, try Open Library by title search as last resort
-  if(!result && inline){
-    toast('No lookup results','');
-  }
-
-  if(!inline){
-    document.getElementById('lookup-spinner').style.display='none';
-  }
-
-  if(!result){
-    if(!inline) document.getElementById('lookup-results-list').innerHTML='<p style="font-size:13px;color:var(--text3);padding:8px 0">No results found. Try entering the title manually.</p>';
+    if(inline) toast('No results — fill in manually','');
+    else document.getElementById('lookup-results-list').innerHTML='<p style="font-size:13px;color:var(--text3);padding:8px 0">No results found across all databases. Try entering the title manually.</p>';
     return;
   }
 
@@ -887,13 +899,13 @@ async function doLookup(code, inline){
 
   if(inline){
     document.getElementById('lr-title').textContent = result.title||'Unknown';
-    document.getElementById('lr-sub').textContent = [result.creator, result.year].filter(Boolean).join(' · ');
+    document.getElementById('lr-sub').textContent = [result.source, result.creator, result.year].filter(Boolean).join(' · ');
     document.getElementById('lookup-result').classList.add('visible');
   } else {
     document.getElementById('lookup-results-list').innerHTML = `
       <div class="lookup-result visible">
         <div class="lr-title">${esc(result.title||'Unknown')}</div>
-        <div class="lr-sub">${esc([result.creator,result.year].filter(Boolean).join(' · '))}</div>
+        <div class="lr-sub">${esc([result.source,result.creator,result.year].filter(Boolean).join(' · '))}</div>
         <span class="lr-apply" id="lr-apply2">↓ use this result</span>
       </div>`;
     document.getElementById('lr-apply2').addEventListener('click',()=>{
@@ -916,6 +928,7 @@ function applyLookup(r){
   toast('Fields filled in','ok');
 }
 
+// ── 1. Open Library (books/ISBN) ─────────────────────────
 async function lookupOpenLibrary(isbn){
   try{
     const clean = isbn.replace(/-/g,'');
@@ -927,23 +940,92 @@ async function lookupOpenLibrary(isbn){
     const author = (b.authors||[])[0]?.name||'';
     const year = b.publish_date ? b.publish_date.match(/\d{4}/)?.[0]||'' : '';
     const cover = b.cover?.medium||b.cover?.large||'';
-    return {title:b.title||'',creator:author,year,image:cover,category:'book'};
+    return {title:b.title||'',creator:author,year,image:cover,category:'book',source:'Open Library'};
   }catch{ return null; }
 }
 
+// ── 2. GameUPC → BGG (board games) ──────────────────────
+async function lookupGameUPC(upc){
+  try{
+    const r = await fetch(`https://api.gameupc.com/test/upc/${encodeURIComponent(upc)}`,
+      {headers:{'x-api-key':'test_test_test_test_test'}});
+    if(!r.ok) return null;
+    const d = await r.json();
+    // bgg_info_status: 'good' means confident match; 'ok' means plausible
+    if(!d.bgg_info || !d.bgg_info.length) return null;
+    const best = d.bgg_info.find(g=>g.status==='good') || d.bgg_info[0];
+    if(!best || !best.name) return null;
+    // Fetch richer data from BGG XML API using the BGG id
+    const bggResult = best.id ? await lookupBGGById(best.id) : null;
+    if(bggResult) return {...bggResult, source:'BoardGameGeek'};
+    return {title:best.name, creator:'', year:'', image:'', category:'board', source:'GameUPC'};
+  }catch{ return null; }
+}
+
+// ── BGG by ID (called from GameUPC result) ───────────────
+async function lookupBGGById(bggId){
+  try{
+    const r = await fetch(`https://boardgamegeek.com/xmlapi2/thing?id=${bggId}&stats=0`);
+    if(!r.ok) return null;
+    const txt = await r.text();
+    const parser = new DOMParser();
+    const xml = parser.parseFromString(txt,'text/xml');
+    const item = xml.querySelector('item');
+    if(!item) return null;
+    const name = item.querySelector('name[type="primary"]')?.getAttribute('value')||'';
+    const year = item.querySelector('yearpublished')?.getAttribute('value')||'';
+    const image = item.querySelector('image')?.textContent?.trim()||'';
+    const publisher = [...item.querySelectorAll('link[type="boardgamepublisher"]')]
+      .map(l=>l.getAttribute('value')).join(', ');
+    return {title:name, creator:publisher, year, image, category:'board'};
+  }catch{ return null; }
+}
+
+// ── BGG keyword search (last-chance for board games) ─────
+async function lookupBGGByKeyword(code){
+  // Only worth trying if code looks non-numeric or after other sources fail
+  // We pass the raw code as a search term — catches named/catalogue codes
+  try{
+    const r = await fetch(`https://boardgamegeek.com/xmlapi2/search?query=${encodeURIComponent(code)}&type=boardgame`);
+    if(!r.ok) return null;
+    const txt = await r.text();
+    const parser = new DOMParser();
+    const xml = parser.parseFromString(txt,'text/xml');
+    const first = xml.querySelector('item');
+    if(!first) return null;
+    const id = first.getAttribute('id');
+    if(!id) return null;
+    return await lookupBGGById(id);
+  }catch{ return null; }
+}
+
+// ── 3. UPC ItemDB (general, 100/day free) ────────────────
 async function lookupUPCItemdb(upc){
   try{
     const r = await fetch(`https://api.upcitemdb.com/prod/trial/lookup?upc=${encodeURIComponent(upc)}`);
-    // 429 or code field "EXCEED_LIMIT" means rate-limited — fail gracefully
-    if(r.status===429){ toast('UPC lookup limit reached today — tried Open Library first',''); return null; }
+    if(r.status===429) return null;
     const d = await r.json();
-    if(d.code==='EXCEED_LIMIT'||d.code==='INVALID_UPC'){ return null; }
+    if(d.code==='EXCEED_LIMIT'||d.code==='INVALID_UPC') return null;
     const item = (d.items||[])[0];
     if(!item) return null;
     const title = item.title||item.description||'';
     const image = (item.images||[])[0]||'';
     const cat = guessCategoryFromTitle(title, item.category||'');
-    return {title, creator:item.brand||'', year:'', image, category:cat};
+    return {title, creator:item.brand||'', year:'', image, category:cat, source:'UPC ItemDB'};
+  }catch{ return null; }
+}
+
+// ── 4. Open Product Data (keyless, EAN/GTIN, EU focus) ───
+async function lookupOpenProductData(code){
+  try{
+    const r = await fetch(`https://product.okfn.org/api/v0/product/${encodeURIComponent(code)}`);
+    if(!r.ok) return null;
+    const d = await r.json();
+    const p = d.product;
+    if(!p || !p.name) return null;
+    const image = (p.images||[])[0]?.url||'';
+    const cat = guessCategoryFromTitle(p.name, p.category||'');
+    return {title:p.name, creator:p.manufacturer||p.brands||'', year:'', image, category:cat, source:'Open Products'};
   }catch{ return null; }
 }
 
@@ -952,8 +1034,8 @@ function guessCategoryFromTitle(title='', cat=''){
   if(/\b(book|novel|manga|comic|guide|manual)\b/.test(t)) return 'book';
   if(/\b(dvd|blu.?ray|uhd|movie|film)\b/.test(t)) return 'dvd';
   if(/\b(cd|album|vinyl|music|soundtrack)\b/.test(t)) return 'cd';
-  if(/\b(board game|tabletop|card game|jigsaw)\b/.test(t)) return 'board';
-  if(/\b(video game|game|ps[1-5]|xbox|nintendo|switch|playstation)\b/.test(t)) return 'game';
+  if(/\b(board game|tabletop|card game|jigsaw|exit|puzzle|escape room)\b/.test(t)) return 'board';
+  if(/\b(video game|ps[1-5]|xbox|nintendo|switch|playstation)\b/.test(t)) return 'game';
   return 'other';
 }
 
