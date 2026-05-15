@@ -257,7 +257,7 @@ textarea.form-input{resize:vertical;min-height:72px}
 <body>
 <div id="app">
   <header>
-    <div class="logo">shelf <span style="font-size:10px;color:var(--text3);font-family:var(--mono);font-weight:400;vertical-align:middle;letter-spacing:0">v3</span><span>personal inventory</span></div>
+    <div class="logo">shelf <span style="font-size:10px;color:var(--text3);font-family:var(--mono);font-weight:400;vertical-align:middle;letter-spacing:0">v5</span><span>personal inventory</span></div>
     <span class="cloud-badge" id="cloud-badge">no cloud</span>
     <button class="hdr-btn" id="cloud-btn" title="Connect cloud storage">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M18 10h-1.26A8 8 0 109 20h9a5 5 0 000-10z"/></svg>
@@ -388,6 +388,9 @@ textarea.form-input{resize:vertical;min-height:72px}
 
       <label class="form-label">image url (optional)</label>
       <input class="form-input" id="f-image" type="url" placeholder="https://…"/>
+
+      <label class="form-label">source database</label>
+      <input class="form-input" id="f-source" type="text" placeholder="e.g. BoardGameGeek, Open Library…"/>
     </div>
 
     <div class="btn-row">
@@ -661,6 +664,7 @@ function openAddSheet(prefill={}){
   setField('f-condition', prefill.condition||'Good');
   setField('f-notes', prefill.notes||'');
   setField('f-image', prefill.image||'');
+  setField('f-source', prefill.source||'');
   document.getElementById('lookup-result').classList.remove('visible');
   pendingLookupResult = null;
   const dr = document.getElementById('delete-row');
@@ -689,6 +693,7 @@ document.getElementById('btn-save').addEventListener('click', ()=>{
     year: getField('f-year'), isbn: getField('f-isbn'),
     platform: getField('f-platform'), condition: getField('f-condition'),
     notes: getField('f-notes'), image: getField('f-image'),
+    source: getField('f-source'),
     addedAt: editingId ? (items.find(i=>i.id===editingId)||{}).addedAt||Date.now() : Date.now(),
     updatedAt: Date.now()
   };
@@ -725,6 +730,7 @@ function openDetail(id){
     item.platform ? ['FORMAT', item.platform] : null,
     ['CONDITION', item.condition||'—'],
     item.notes ? ['NOTES', item.notes] : null,
+    item.source ? ['SOURCE DB', item.source] : null,
     ['ADDED', new Date(item.addedAt).toLocaleDateString()],
   ].filter(Boolean);
   document.getElementById('detail-content').innerHTML = `
@@ -784,12 +790,21 @@ document.getElementById('mode-cover').addEventListener('click',()=>{ camMode='co
 
 let coverVideoEl = null;
 function startCoverCamera(){
-  if(coverVideoEl) return;
+  // Quagga leaves its own <video> and <canvas> elements behind — remove them all
+  // before injecting our own, otherwise we get a black screen.
+  const scanner = document.getElementById('barcode-scanner');
+  scanner.querySelectorAll('video,canvas').forEach(el=>el.remove());
+  coverVideoEl = null; // reset guard after cleanup
+
   coverVideoEl = document.createElement('video');
   coverVideoEl.autoplay=true; coverVideoEl.playsInline=true; coverVideoEl.muted=true;
-  document.getElementById('barcode-scanner').prepend(coverVideoEl);
+  coverVideoEl.style.cssText='position:absolute;inset:0;width:100%;height:100%;object-fit:cover';
+  scanner.prepend(coverVideoEl);
   navigator.mediaDevices.getUserMedia({video:{facingMode:'environment',width:{ideal:1280},height:{ideal:720}}})
-    .then(s=>{ coverVideoEl.srcObject=s; })
+    .then(s=>{
+      coverVideoEl.srcObject=s;
+      coverVideoEl.play().catch(()=>{});
+    })
     .catch(()=>toast('Camera access denied','err'));
 }
 
@@ -898,9 +913,14 @@ async function doLookup(code, inline){
   pendingLookupResult = result;
 
   if(inline){
+    // Auto-fill immediately on barcode scan — no extra tap needed
+    applyLookup(result);
+    // Show a brief confirmation banner with source info
     document.getElementById('lr-title').textContent = result.title||'Unknown';
     document.getElementById('lr-sub').textContent = [result.source, result.creator, result.year].filter(Boolean).join(' · ');
     document.getElementById('lookup-result').classList.add('visible');
+    // Auto-dismiss the banner after 3s
+    setTimeout(()=>document.getElementById('lookup-result').classList.remove('visible'), 3000);
   } else {
     document.getElementById('lookup-results-list').innerHTML = `
       <div class="lookup-result visible">
@@ -924,8 +944,9 @@ function applyLookup(r){
   if(r.year) setField('f-year', r.year);
   if(r.image) setField('f-image', r.image);
   if(r.category) setField('f-category', r.category);
+  if(r.platform) setField('f-platform', r.platform);
+  if(r.source) setField('f-source', r.source);
   document.getElementById('lookup-result').classList.remove('visible');
-  toast('Fields filled in','ok');
 }
 
 // ── 1. Open Library (books/ISBN) ─────────────────────────
@@ -974,10 +995,25 @@ async function lookupBGGById(bggId){
     if(!item) return null;
     const name = item.querySelector('name[type="primary"]')?.getAttribute('value')||'';
     const year = item.querySelector('yearpublished')?.getAttribute('value')||'';
-    const image = item.querySelector('image')?.textContent?.trim()||'';
-    const publisher = [...item.querySelectorAll('link[type="boardgamepublisher"]')]
-      .map(l=>l.getAttribute('value')).join(', ');
-    return {title:name, creator:publisher, year, image, category:'board'};
+    // BGG image URLs sometimes start with // — normalise to https://
+    let image = item.querySelector('image')?.textContent?.trim()||'';
+    if(image.startsWith('//')) image = 'https:' + image;
+    // Designers → creator field (most relevant for board games)
+    const designers = [...item.querySelectorAll('link[type="boardgamedesigner"]')]
+      .map(l=>l.getAttribute('value'))
+      .filter(v=>v && v!=='(Uncredited)');
+    // Publishers → platform field (useful context, different from creator)
+    const publishers = [...item.querySelectorAll('link[type="boardgamepublisher"]')]
+      .map(l=>l.getAttribute('value'))
+      .filter(v=>v && v!=='(Unknown)');
+    return {
+      title: name,
+      creator: designers.slice(0,2).join(', '),   // up to 2 designers
+      platform: publishers.slice(0,2).join(', '),  // up to 2 publishers → platform field
+      year,
+      image,
+      category: 'board'
+    };
   }catch{ return null; }
 }
 
@@ -1091,7 +1127,7 @@ async function manualSync(){
 
 // Builds CSV from items
 function buildCSV(){
-  const headers = ['id','category','title','creator','year','isbn','platform','condition','notes','image','addedAt','updatedAt'];
+  const headers = ['id','category','title','creator','year','isbn','platform','condition','notes','image','source','addedAt','updatedAt'];
   const rows = [headers.join(',')];
   items.forEach(item=>{
     rows.push(headers.map(h=>{
