@@ -257,7 +257,7 @@ textarea.form-input{resize:vertical;min-height:72px}
 <body>
 <div id="app">
   <header>
-    <div class="logo">shelf <span style="font-size:10px;color:var(--text3);font-family:var(--mono);font-weight:400;vertical-align:middle;letter-spacing:0">v5</span><span>personal inventory</span></div>
+    <div class="logo">shelf <span style="font-size:10px;color:var(--text3);font-family:var(--mono);font-weight:400;vertical-align:middle;letter-spacing:0">v6</span><span>personal inventory</span></div>
     <span class="cloud-badge" id="cloud-badge">no cloud</span>
     <button class="hdr-btn" id="cloud-btn" title="Connect cloud storage">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M18 10h-1.26A8 8 0 109 20h9a5 5 0 000-10z"/></svg>
@@ -375,6 +375,9 @@ textarea.form-input{resize:vertical;min-height:72px}
       <label class="form-label">platform / format</label>
       <input class="form-input" id="f-platform" type="text" placeholder="e.g. PS5, Hardcover, 4K UHD…"/>
 
+      <label class="form-label">quantity</label>
+      <input class="form-input" id="f-qty" type="number" placeholder="1" min="1" value="1" style="width:100px"/>
+
       <label class="form-label">condition</label>
       <select class="form-input" id="f-condition">
         <option>New</option>
@@ -485,6 +488,7 @@ textarea.form-input{resize:vertical;min-height:72px}
       </div>
     </div>
   </div>
+</div>
 
 <!-- LOOKUP DIALOG -->
 <div class="overlay" id="lookup-overlay">
@@ -498,6 +502,28 @@ textarea.form-input{resize:vertical;min-height:72px}
       <button class="btn btn-primary" id="do-lookup-btn" style="width:100%;margin-top:12px">Search</button>
       <div id="lookup-spinner" style="text-align:center;padding:16px;display:none"><div class="spinner"></div></div>
       <div id="lookup-results-list" style="margin-top:8px"></div>
+    </div>
+  </div>
+</div>
+
+<!-- DUPLICATE SCAN DIALOG -->
+<div class="overlay" id="dup-overlay">
+  <div class="sheet" style="position:relative">
+    <div class="sheet-handle"></div>
+    <div class="sheet-title">Already in inventory</div>
+    <div style="padding:0 16px 16px">
+      <div style="display:flex;gap:12px;align-items:center;padding:12px;background:var(--bg2);border:1px solid var(--bg3);border-radius:var(--radius);margin-bottom:16px">
+        <div id="dup-thumb" style="width:44px;height:56px;border-radius:6px;background:var(--bg3);display:flex;align-items:center;justify-content:center;font-size:22px;flex-shrink:0"></div>
+        <div>
+          <div id="dup-title" style="font-size:14px;font-weight:500;color:var(--text)"></div>
+          <div id="dup-meta" style="font-size:12px;color:var(--text2);margin-top:3px"></div>
+        </div>
+      </div>
+      <p style="font-size:13px;color:var(--text2);margin-bottom:16px;line-height:1.6">You already have <span id="dup-qty-txt" style="color:var(--text);font-weight:500"></span> of this item. What would you like to do?</p>
+      <button class="btn btn-primary" id="dup-increment-btn" style="width:100%;margin-bottom:8px">Add 1 more (increase quantity)</button>
+      <button class="btn btn-secondary" id="dup-edit-btn" style="width:100%;margin-bottom:8px">Edit existing item</button>
+      <button class="btn btn-secondary" id="dup-new-btn" style="width:100%;margin-bottom:8px">Add as separate entry</button>
+      <button class="btn btn-secondary" id="dup-discard-btn" style="width:100%">Discard scan</button>
     </div>
   </div>
 </div>
@@ -571,6 +597,7 @@ function renderList(){
           <span class="badge cat-${item.category}">${item.category}</span>
           ${item.platform?`<span class="badge">${esc(item.platform)}</span>`:''}
           ${item.condition&&item.condition!=='Good'?`<span class="badge">${esc(item.condition)}</span>`:''}
+          ${(item.qty&&item.qty>1)?`<span class="badge" style="background:rgba(232,200,122,.12);color:var(--accent)">×${item.qty}</span>`:''}
         </div>
       </div>
     </div>`;
@@ -660,6 +687,7 @@ function openAddSheet(prefill={}){
   setField('f-creator', prefill.creator||'');
   setField('f-year', prefill.year||'');
   setField('f-isbn', prefill.isbn||'');
+  setField('f-qty', prefill.qty||1);
   setField('f-platform', prefill.platform||'');
   setField('f-condition', prefill.condition||'Good');
   setField('f-notes', prefill.notes||'');
@@ -691,6 +719,7 @@ document.getElementById('btn-save').addEventListener('click', ()=>{
     category: getField('f-category'),
     title, creator: getField('f-creator'),
     year: getField('f-year'), isbn: getField('f-isbn'),
+    qty: Math.max(1, parseInt(getField('f-qty'))||1),
     platform: getField('f-platform'), condition: getField('f-condition'),
     notes: getField('f-notes'), image: getField('f-image'),
     source: getField('f-source'),
@@ -728,6 +757,7 @@ function openDetail(id){
     item.year ? ['YEAR', item.year] : null,
     item.isbn ? ['ISBN/UPC', item.isbn] : null,
     item.platform ? ['FORMAT', item.platform] : null,
+    ['QUANTITY', item.qty||1],
     ['CONDITION', item.condition||'—'],
     item.notes ? ['NOTES', item.notes] : null,
     item.source ? ['SOURCE DB', item.source] : null,
@@ -748,6 +778,61 @@ function openDetail(id){
 }
 function closeDetail(){ document.getElementById('detail-overlay').classList.remove('open'); }
 document.getElementById('detail-close').addEventListener('click', closeDetail);
+
+// ═══════════════════════════════════════════════════════
+//  DUPLICATE SCAN DIALOG
+// ═══════════════════════════════════════════════════════
+let dupPendingCode = null;
+let dupPendingItem = null;
+
+function showDuplicateDialog(existing, code){
+  dupPendingCode = code;
+  dupPendingItem = existing;
+  const CAT_EMOJI = {book:'📚',dvd:'📀',game:'🎮',board:'🎲',cd:'💿',other:'📦'};
+  const thumb = document.getElementById('dup-thumb');
+  if(existing.image){
+    thumb.innerHTML = `<img src="${esc(existing.image)}" style="width:100%;height:100%;object-fit:cover;border-radius:6px">`;
+  } else {
+    thumb.textContent = CAT_EMOJI[existing.category]||'📦';
+  }
+  document.getElementById('dup-title').textContent = existing.title||'Untitled';
+  document.getElementById('dup-meta').textContent = [existing.creator, existing.year].filter(Boolean).join(' · ');
+  const qty = existing.qty||1;
+  document.getElementById('dup-qty-txt').textContent = qty === 1 ? '1 copy' : `${qty} copies`;
+  document.getElementById('dup-overlay').classList.add('open');
+}
+
+function closeDupDialog(){ document.getElementById('dup-overlay').classList.remove('open'); }
+
+document.getElementById('dup-increment-btn').addEventListener('click',()=>{
+  if(!dupPendingItem) return;
+  const idx = items.findIndex(i=>i.id===dupPendingItem.id);
+  if(idx>=0){
+    items[idx].qty = (items[idx].qty||1) + 1;
+    items[idx].updatedAt = Date.now();
+    saveItems(); renderList();
+    toast(`Quantity updated → ${items[idx].qty} ✓`,'ok');
+    autoSync();
+  }
+  closeDupDialog();
+});
+
+document.getElementById('dup-edit-btn').addEventListener('click',()=>{
+  closeDupDialog();
+  openAddSheet(dupPendingItem);
+});
+
+document.getElementById('dup-new-btn').addEventListener('click',()=>{
+  closeDupDialog();
+  setField('f-isbn', dupPendingCode||'');
+  document.getElementById('add-overlay').classList.add('open');
+  doLookup(dupPendingCode, true);
+});
+
+document.getElementById('dup-discard-btn').addEventListener('click',()=>{
+  closeDupDialog();
+  toast('Scan discarded','');
+});
 
 // ═══════════════════════════════════════════════════════
 //  CAMERA / BARCODE
@@ -839,9 +924,14 @@ function startBarcode(){
     if(!code) return;
     stopBarcode();
     closeCamera();
-    setField('f-isbn', code);
-    toast('Barcode: '+code);
-    doLookup(code, true);
+    // Check if this barcode already exists in inventory
+    const existing = items.find(i=>i.isbn && i.isbn===code);
+    if(existing){
+      showDuplicateDialog(existing, code);
+    } else {
+      setField('f-isbn', code);
+      doLookup(code, true);
+    }
   });
 }
 
@@ -1127,7 +1217,7 @@ async function manualSync(){
 
 // Builds CSV from items
 function buildCSV(){
-  const headers = ['id','category','title','creator','year','isbn','platform','condition','notes','image','source','addedAt','updatedAt'];
+  const headers = ['id','category','title','creator','year','isbn','platform','qty','condition','notes','image','source','addedAt','updatedAt'];
   const rows = [headers.join(',')];
   items.forEach(item=>{
     rows.push(headers.map(h=>{
