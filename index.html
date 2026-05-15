@@ -104,6 +104,25 @@ header{
   border:1px solid var(--bg4);background:var(--bg2);color:var(--text2);cursor:pointer;transition:all .12s}
 .fpill.active{background:var(--accent);color:#1a1500;border-color:var(--accent)}
 
+/* ── Select mode ── */
+.select-bar{display:none;align-items:center;gap:10px;padding:8px 12px;
+  background:var(--bg2);border-bottom:1px solid var(--bg3);flex-shrink:0}
+.select-bar.visible{display:flex}
+.select-count{font-size:13px;font-family:var(--mono);color:var(--text2);flex:1}
+.select-del-btn{padding:7px 16px;border-radius:var(--radius-sm);background:rgba(224,112,112,.12);
+  color:var(--danger);border:1px solid rgba(224,112,112,.25);font-size:13px;font-family:var(--mono);cursor:pointer}
+.select-del-btn:active{background:rgba(224,112,112,.22)}
+.select-cancel-btn{padding:7px 14px;border-radius:var(--radius-sm);background:var(--bg3);
+  color:var(--text2);border:1px solid var(--bg4);font-size:13px;font-family:var(--mono);cursor:pointer}
+.item-card.selected{border-color:var(--accent);background:rgba(232,200,122,.06)}
+.item-check{width:22px;height:22px;border-radius:50%;border:1.5px solid var(--bg4);
+  background:var(--bg2);flex-shrink:0;display:none;align-items:center;justify-content:center;
+  margin-left:auto;transition:all .12s}
+.select-mode .item-check{display:flex}
+.item-card.selected .item-check{background:var(--accent);border-color:var(--accent);color:#1a1500}
+.select-mode .item-card{cursor:default}
+/* ── Loan badge ── */
+.badge.loaned{background:rgba(224,112,122,.12);color:var(--danger)}
 /* ── Empty state ── */
 .empty{text-align:center;padding:60px 24px;color:var(--text3)}
 .empty .icon{font-size:48px;margin-bottom:16px;opacity:.4}
@@ -257,8 +276,11 @@ textarea.form-input{resize:vertical;min-height:72px}
 <body>
 <div id="app">
   <header>
-    <div class="logo">shelf <span style="font-size:10px;color:var(--text3);font-family:var(--mono);font-weight:400;vertical-align:middle;letter-spacing:0">v6</span><span>personal inventory</span></div>
+    <div class="logo">shelf <span style="font-size:10px;color:var(--text3);font-family:var(--mono);font-weight:400;vertical-align:middle;letter-spacing:0">v7</span><span>personal inventory</span></div>
     <span class="cloud-badge" id="cloud-badge">no cloud</span>
+    <button class="hdr-btn" id="select-btn" title="Select items">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="9" cy="21" r="1"/><circle cx="15" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 001.94 1.61h9.72a2 2 0 001.94-1.51l1.38-7.49H6"/></svg>
+    </button>
     <button class="hdr-btn" id="cloud-btn" title="Connect cloud storage">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M18 10h-1.26A8 8 0 109 20h9a5 5 0 000-10z"/></svg>
     </button>
@@ -285,6 +307,11 @@ textarea.form-input{resize:vertical;min-height:72px}
       <div class="fpill" data-cat="board">board games</div>
       <div class="fpill" data-cat="cd">music</div>
       <div class="fpill" data-cat="other">other</div>
+    </div>
+    <div class="select-bar" id="select-bar">
+      <span class="select-count" id="select-count">0 selected</span>
+      <button class="select-cancel-btn" id="select-cancel-btn">cancel</button>
+      <button class="select-del-btn" id="select-del-btn">delete</button>
     </div>
     <div id="items-list"></div>
   </div>
@@ -385,6 +412,24 @@ textarea.form-input{resize:vertical;min-height:72px}
         <option>Fair</option>
         <option>Poor</option>
       </select>
+
+      <label class="form-label">loaned out</label>
+      <div style="display:flex;gap:8px;align-items:center;margin-bottom:4px">
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:14px;color:var(--text2)">
+          <input type="checkbox" id="f-loaned" style="width:18px;height:18px;accent-color:var(--accent);cursor:pointer"/>
+          Item is currently loaned out
+        </label>
+      </div>
+      <div id="loan-to-row" style="display:none;margin-top:6px">
+        <div style="display:flex;gap:8px">
+          <input class="form-input" id="f-loan-to" type="text" placeholder="Person's name…" style="flex:1"/>
+          <button type="button" id="contact-pick-btn" style="padding:0 14px;border-radius:var(--radius-sm);
+            background:var(--bg3);border:1px solid var(--bg4);color:var(--text2);cursor:pointer;
+            font-size:20px;flex-shrink:0" title="Pick from contacts">👤</button>
+        </div>
+        <label class="form-label" style="margin-top:10px">loan date</label>
+        <input class="form-input" id="f-loan-date" type="date"/>
+      </div>
 
       <label class="form-label">notes</label>
       <textarea class="form-input" id="f-notes" placeholder="Optional notes…"></textarea>
@@ -598,11 +643,29 @@ function renderList(){
           ${item.platform?`<span class="badge">${esc(item.platform)}</span>`:''}
           ${item.condition&&item.condition!=='Good'?`<span class="badge">${esc(item.condition)}</span>`:''}
           ${(item.qty&&item.qty>1)?`<span class="badge" style="background:rgba(232,200,122,.12);color:var(--accent)">×${item.qty}</span>`:''}
+          ${item.loaned?`<span class="badge loaned">loaned${item.loanTo?' → '+esc(item.loanTo):''}</span>`:''}
         </div>
       </div>
+      <div class="item-check">✓</div>
     </div>`;
   }).join('');
-  el.querySelectorAll('.item-card').forEach(c=>c.addEventListener('click',()=>openDetail(c.dataset.id)));
+  el.querySelectorAll('.item-card').forEach(c=>c.addEventListener('click',()=>{
+    if(selectMode){
+      const id = c.dataset.id;
+      if(selectedIds.has(id)){ selectedIds.delete(id); c.classList.remove('selected'); }
+      else { selectedIds.add(id); c.classList.add('selected'); }
+      updateSelectBar();
+    } else {
+      openDetail(c.dataset.id);
+    }
+  }));
+  // Restore selected state after re-render
+  if(selectMode){
+    el.classList.add('select-mode');
+    el.querySelectorAll('.item-card').forEach(c=>{
+      if(selectedIds.has(c.dataset.id)) c.classList.add('selected');
+    });
+  }
 }
 
 function esc(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;') }
@@ -693,6 +756,11 @@ function openAddSheet(prefill={}){
   setField('f-notes', prefill.notes||'');
   setField('f-image', prefill.image||'');
   setField('f-source', prefill.source||'');
+  const loanedEl = document.getElementById('f-loaned');
+  loanedEl.checked = !!prefill.loaned;
+  document.getElementById('loan-to-row').style.display = prefill.loaned ? 'block' : 'none';
+  setField('f-loan-to', prefill.loanTo||'');
+  setField('f-loan-date', prefill.loanDate||'');
   document.getElementById('lookup-result').classList.remove('visible');
   pendingLookupResult = null;
   const dr = document.getElementById('delete-row');
@@ -723,6 +791,9 @@ document.getElementById('btn-save').addEventListener('click', ()=>{
     platform: getField('f-platform'), condition: getField('f-condition'),
     notes: getField('f-notes'), image: getField('f-image'),
     source: getField('f-source'),
+    loaned: document.getElementById('f-loaned').checked,
+    loanTo: document.getElementById('f-loaned').checked ? getField('f-loan-to') : '',
+    loanDate: document.getElementById('f-loaned').checked ? getField('f-loan-date') : '',
     addedAt: editingId ? (items.find(i=>i.id===editingId)||{}).addedAt||Date.now() : Date.now(),
     updatedAt: Date.now()
   };
@@ -743,6 +814,81 @@ function deleteItem(id){
 }
 
 // ═══════════════════════════════════════════════════════
+//  SELECT MODE & BULK DELETE
+// ═══════════════════════════════════════════════════════
+let selectMode = false;
+let selectedIds = new Set();
+
+document.getElementById('select-btn').addEventListener('click', enterSelectMode);
+
+function enterSelectMode(){
+  selectMode = true;
+  selectedIds.clear();
+  document.getElementById('items-list').classList.add('select-mode');
+  document.getElementById('select-bar').classList.add('visible');
+  document.getElementById('add-fab').style.display = 'none';
+  updateSelectBar();
+  // Rebind card clicks to toggle selection
+  renderList();
+}
+
+function exitSelectMode(){
+  selectMode = false;
+  selectedIds.clear();
+  document.getElementById('items-list').classList.remove('select-mode');
+  document.getElementById('select-bar').classList.remove('visible');
+  document.getElementById('add-fab').style.display = '';
+  renderList();
+}
+
+function updateSelectBar(){
+  const n = selectedIds.size;
+  document.getElementById('select-count').textContent = n === 0 ? 'tap items to select' : `${n} selected`;
+  document.getElementById('select-del-btn').style.opacity = n > 0 ? '1' : '0.4';
+}
+
+document.getElementById('select-cancel-btn').addEventListener('click', exitSelectMode);
+
+document.getElementById('select-del-btn').addEventListener('click', ()=>{
+  const n = selectedIds.size;
+  if(n === 0) return;
+  if(!confirm(`Delete ${n} item${n>1?'s':''}? This cannot be undone.`)) return;
+  items = items.filter(i => !selectedIds.has(i.id));
+  saveItems();
+  exitSelectMode();
+  toast(`${n} item${n>1?'s':''} deleted`,'');
+  autoSync();
+});
+
+// ═══════════════════════════════════════════════════════
+//  LOAN FIELDS & CONTACT PICKER
+// ═══════════════════════════════════════════════════════
+document.getElementById('f-loaned').addEventListener('change', e=>{
+  document.getElementById('loan-to-row').style.display = e.target.checked ? 'block' : 'none';
+  if(e.target.checked && !document.getElementById('f-loan-date').value){
+    document.getElementById('f-loan-date').value = new Date().toISOString().slice(0,10);
+  }
+});
+
+document.getElementById('contact-pick-btn').addEventListener('click', async ()=>{
+  // Use Contact Picker API on supported Android Chrome, fall back to manual
+  if('contacts' in navigator && 'ContactsManager' in window){
+    try{
+      const contacts = await navigator.contacts.select(['name'], {multiple: false});
+      if(contacts && contacts.length > 0){
+        const name = (contacts[0].name||[])[0] || '';
+        if(name) setField('f-loan-to', name);
+      }
+    } catch(e){
+      // User cancelled or permission denied — just leave field as-is
+    }
+  } else {
+    toast('Contact picker not available — type name manually','');
+    document.getElementById('f-loan-to').focus();
+  }
+});
+
+// ═══════════════════════════════════════════════════════
 //  DETAIL VIEW
 // ═══════════════════════════════════════════════════════
 function openDetail(id){
@@ -761,6 +907,8 @@ function openDetail(id){
     ['CONDITION', item.condition||'—'],
     item.notes ? ['NOTES', item.notes] : null,
     item.source ? ['SOURCE DB', item.source] : null,
+    item.loaned ? ['LOANED TO', item.loanTo||(item.loanDate?'(unnamed)':'yes')] : null,
+    item.loanDate ? ['LOAN DATE', item.loanDate] : null,
     ['ADDED', new Date(item.addedAt).toLocaleDateString()],
   ].filter(Boolean);
   document.getElementById('detail-content').innerHTML = `
@@ -1217,7 +1365,7 @@ async function manualSync(){
 
 // Builds CSV from items
 function buildCSV(){
-  const headers = ['id','category','title','creator','year','isbn','platform','qty','condition','notes','image','source','addedAt','updatedAt'];
+  const headers = ['id','category','title','creator','year','isbn','platform','qty','condition','notes','image','source','loaned','loanTo','loanDate','addedAt','updatedAt'];
   const rows = [headers.join(',')];
   items.forEach(item=>{
     rows.push(headers.map(h=>{
