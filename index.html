@@ -276,7 +276,7 @@ textarea.form-input{resize:vertical;min-height:72px}
 <body>
 <div id="app">
   <header>
-    <div class="logo">shelf <span style="font-size:10px;color:var(--text3);font-family:var(--mono);font-weight:400;vertical-align:middle;letter-spacing:0">v8</span><span>personal inventory</span></div>
+    <div class="logo">shelf <span style="font-size:10px;color:var(--text3);font-family:var(--mono);font-weight:400;vertical-align:middle;letter-spacing:0">v9</span><span>personal inventory</span></div>
     <span class="cloud-badge" id="cloud-badge">no cloud</span>
     <button class="hdr-btn" id="select-btn" title="Select items">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="9" cy="21" r="1"/><circle cx="15" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 001.94 1.61h9.72a2 2 0 001.94-1.51l1.38-7.49H6"/></svg>
@@ -548,6 +548,19 @@ textarea.form-input{resize:vertical;min-height:72px}
       <div id="lookup-spinner" style="text-align:center;padding:16px;display:none"><div class="spinner"></div></div>
       <div id="lookup-results-list" style="margin-top:8px"></div>
     </div>
+  </div>
+</div>
+
+<!-- RESULT PICKER (multiple sources returned results) -->
+<div class="overlay" id="picker-overlay">
+  <div class="sheet" style="position:relative">
+    <div class="sheet-handle"></div>
+    <button class="sheet-close" id="picker-close">✕</button>
+    <div class="sheet-title">Multiple matches found</div>
+    <p style="font-size:13px;color:var(--text2);padding:0 16px 10px;line-height:1.6">
+      Several databases returned different results for this code. Pick the one that's correct.
+    </p>
+    <div class="form-section" id="picker-results"></div>
   </div>
 </div>
 
@@ -984,6 +997,10 @@ document.getElementById('dup-discard-btn').addEventListener('click',()=>{
   toast('Scan discarded','');
 });
 
+document.getElementById('picker-close').addEventListener('click',()=>{
+  document.getElementById('picker-overlay').classList.remove('open');
+});
+
 // ═══════════════════════════════════════════════════════
 //  CAMERA / BARCODE
 // ═══════════════════════════════════════════════════════
@@ -1128,38 +1145,53 @@ document.getElementById('do-lookup-btn').addEventListener('click',()=>{
 });
 
 async function doLookup(code, inline){
-  // Lookup chain (each silently skipped on failure/no-result):
-  // 1. Open Library  — books & ISBN, no rate limit, huge DB
-  // 2. GameUPC       — board games specifically, UPC→BGG (free test key)
-  // 3. UPC ItemDB    — general products (100/day free limit)
-  // 4. BGG XML API   — keyword search fallback for any board-game-like barcode
-  // 5. Open Product Data — truly generic last resort (keyless, EU/global)
-  let result = null;
-
-  result = await lookupOpenLibrary(code);
-  if(!result) result = await lookupGameUPC(code);
-  if(!result) result = await lookupUPCItemdb(code);
-  if(!result) result = await lookupBGGByKeyword(code);
-  if(!result) result = await lookupOpenProductData(code);
+  // Run ALL sources in parallel — collect every result, then let the user pick
+  // if more than one returns data. This prevents the wrong source "winning" just
+  // because it responded first (e.g. GameUPC returning a false board-game match
+  // for an ISBN that Open Library would correctly identify as a book).
+  const sources = [
+    lookupOpenLibrary(code),
+    lookupGameUPC(code),
+    lookupUPCItemdb(code),
+    lookupBGGByKeyword(code),
+    lookupOpenProductData(code),
+  ];
+  const settled = await Promise.allSettled(sources);
+  const results = settled
+    .filter(r => r.status === 'fulfilled' && r.value)
+    .map(r => r.value)
+    .filter((r,i,arr) => {
+      // Deduplicate: keep only the first result per source, and drop entries
+      // whose title (lowercased, trimmed) is identical to an earlier entry —
+      // multiple DBs sometimes return the exact same record.
+      const key = (r.title||'').toLowerCase().trim();
+      return arr.findIndex(x=>(x.title||'').toLowerCase().trim()===key) === i;
+    });
 
   if(!inline) document.getElementById('lookup-spinner').style.display='none';
 
-  if(!result){
+  if(!results.length){
     if(inline) toast('No results — fill in manually','');
     else document.getElementById('lookup-results-list').innerHTML='<p style="font-size:13px;color:var(--text3);padding:8px 0">No results found across all databases. Try entering the title manually.</p>';
     return;
   }
 
-  pendingLookupResult = result;
+  if(results.length === 1){
+    // Single result — auto-apply (inline) or show single card (manual lookup)
+    handleSingleResult(results[0], inline);
+  } else {
+    // Multiple results — always show picker so user can choose the right one
+    showResultPicker(results, inline);
+  }
+}
 
+function handleSingleResult(result, inline){
+  pendingLookupResult = result;
   if(inline){
-    // Auto-fill immediately on barcode scan — no extra tap needed
     applyLookup(result);
-    // Show a brief confirmation banner with source info
     document.getElementById('lr-title').textContent = result.title||'Unknown';
     document.getElementById('lr-sub').textContent = [result.source, result.creator, result.year].filter(Boolean).join(' · ');
     document.getElementById('lookup-result').classList.add('visible');
-    // Auto-dismiss the banner after 3s
     setTimeout(()=>document.getElementById('lookup-result').classList.remove('visible'), 3000);
   } else {
     document.getElementById('lookup-results-list').innerHTML = `
@@ -1169,11 +1201,43 @@ async function doLookup(code, inline){
         <span class="lr-apply" id="lr-apply2">↓ use this result</span>
       </div>`;
     document.getElementById('lr-apply2').addEventListener('click',()=>{
-      applyLookup(pendingLookupResult);
+      applyLookup(result);
       document.getElementById('lookup-overlay').classList.remove('open');
       document.getElementById('add-overlay').classList.add('open');
     });
   }
+}
+
+function showResultPicker(results, inline){
+  // Show the multi-result picker sheet
+  const list = document.getElementById('picker-results');
+  list.innerHTML = results.map((r,i)=>`
+    <div class="lookup-result visible picker-option" data-idx="${i}" style="cursor:pointer;margin-bottom:8px">
+      <div style="display:flex;gap:10px;align-items:center">
+        ${r.image?`<img src="${esc(r.image)}" style="width:36px;height:46px;object-fit:cover;border-radius:4px;flex-shrink:0">`:'<div style="width:36px;height:46px;background:var(--bg3);border-radius:4px;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:18px">'+(CAT_EMOJI[r.category]||'📦')+'</div>'}
+        <div style="flex:1;min-width:0">
+          <div class="lr-title">${esc(r.title||'Unknown')}</div>
+          <div class="lr-sub">${esc([r.source,r.creator,r.year].filter(Boolean).join(' · '))}</div>
+        </div>
+        <span class="lr-apply" style="flex-shrink:0">use</span>
+      </div>
+    </div>`).join('');
+
+  list.querySelectorAll('.picker-option').forEach(el=>{
+    el.addEventListener('click',()=>{
+      const r = results[+el.dataset.idx];
+      applyLookup(r);
+      document.getElementById('picker-overlay').classList.remove('open');
+      if(!inline){
+        document.getElementById('lookup-overlay').classList.remove('open');
+      }
+      document.getElementById('add-overlay').classList.add('open');
+      document.getElementById('add-sheet').scrollTop = 0;
+      toast('Fields filled in','ok');
+    });
+  });
+
+  document.getElementById('picker-overlay').classList.add('open');
 }
 
 document.getElementById('lr-apply').addEventListener('click',()=>{ if(pendingLookupResult) applyLookup(pendingLookupResult); });

@@ -1,4 +1,4 @@
-const CACHE = 'shelf-v8';
+const CACHE = 'shelf-v9';
 const ASSETS = ['./index.html', './manifest.json'];
 
 self.addEventListener('install', e => {
