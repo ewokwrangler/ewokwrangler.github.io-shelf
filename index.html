@@ -276,7 +276,7 @@ textarea.form-input{resize:vertical;min-height:72px}
 <body>
 <div id="app">
   <header>
-    <div class="logo">shelf <span style="font-size:10px;color:var(--text3);font-family:var(--mono);font-weight:400;vertical-align:middle;letter-spacing:0">v9</span><span>personal inventory</span></div>
+    <div class="logo">shelf <span style="font-size:10px;color:var(--text3);font-family:var(--mono);font-weight:400;vertical-align:middle;letter-spacing:0">v10</span><span>personal inventory</span></div>
     <span class="cloud-badge" id="cloud-badge">no cloud</span>
     <button class="hdr-btn" id="select-btn" title="Select items">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="9" cy="21" r="1"/><circle cx="15" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 001.94 1.61h9.72a2 2 0 001.94-1.51l1.38-7.49H6"/></svg>
@@ -1145,16 +1145,19 @@ document.getElementById('do-lookup-btn').addEventListener('click',()=>{
 });
 
 async function doLookup(code, inline){
-  // Run ALL sources in parallel — collect every result, then let the user pick
-  // if more than one returns data. This prevents the wrong source "winning" just
-  // because it responded first (e.g. GameUPC returning a false board-game match
-  // for an ISBN that Open Library would correctly identify as a book).
+  // Gate sources by code type to avoid false positives:
+  // — 978x/979x prefixes are ISBN book identifiers; never send to game/UPC DBs
+  // — Pure numeric 12-digit codes are UPCs; skip book-only sources if OL misses
+  const clean = code.replace(/-/g,'');
+  const isISBN = /^97[89]/.test(clean);
+
   const sources = [
     lookupOpenLibrary(code),
-    lookupGameUPC(code),
-    lookupUPCItemdb(code),
-    lookupBGGByKeyword(code),
-    lookupOpenProductData(code),
+    lookupGoogleBooks(code),                         // covers KDP / 9798 ISBNs
+    isISBN ? Promise.resolve(null) : lookupGameUPC(code),
+    isISBN ? Promise.resolve(null) : lookupUPCItemdb(code),
+    isISBN ? Promise.resolve(null) : lookupBGGByKeyword(code),
+    isISBN ? Promise.resolve(null) : lookupOpenProductData(code),
   ];
   const settled = await Promise.allSettled(sources);
   const results = settled
@@ -1266,6 +1269,27 @@ async function lookupOpenLibrary(isbn){
     const year = b.publish_date ? b.publish_date.match(/\d{4}/)?.[0]||'' : '';
     const cover = b.cover?.medium||b.cover?.large||'';
     return {title:b.title||'',creator:author,year,image:cover,category:'book',source:'Open Library'};
+  }catch{ return null; }
+}
+
+// ── 1b. Google Books (covers KDP/self-pub ISBNs Open Library misses) ────────
+async function lookupGoogleBooks(isbn){
+  try{
+    const clean = isbn.replace(/-/g,'');
+    const r = await fetch(`https://www.googleapis.com/books/v1/volumes?q=isbn:${clean}&maxResults=1`);
+    if(!r.ok) return null;
+    const d = await r.json();
+    const item = (d.items||[])[0];
+    if(!item) return null;
+    const info = item.volumeInfo||{};
+    const title = info.title||'';
+    if(!title) return null;
+    const author = (info.authors||[])[0]||'';
+    const year = (info.publishedDate||'').slice(0,4);
+    // Google Books returns thumbnail URLs — use a larger size
+    const thumb = info.imageLinks?.thumbnail||info.imageLinks?.smallThumbnail||'';
+    const image = thumb.replace('zoom=1','zoom=2').replace('http://','https://');
+    return {title, creator:author, year, image, category:'book', source:'Google Books'};
   }catch{ return null; }
 }
 
