@@ -276,7 +276,7 @@ textarea.form-input{resize:vertical;min-height:72px}
 <body>
 <div id="app">
   <header>
-    <div class="logo">shelf <span style="font-size:10px;color:var(--text3);font-family:var(--mono);font-weight:400;vertical-align:middle;letter-spacing:0">v7</span><span>personal inventory</span></div>
+    <div class="logo">shelf <span style="font-size:10px;color:var(--text3);font-family:var(--mono);font-weight:400;vertical-align:middle;letter-spacing:0">v8</span><span>personal inventory</span></div>
     <span class="cloud-badge" id="cloud-badge">no cloud</span>
     <button class="hdr-btn" id="select-btn" title="Select items">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="9" cy="21" r="1"/><circle cx="15" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 001.94 1.61h9.72a2 2 0 001.94-1.51l1.38-7.49H6"/></svg>
@@ -769,6 +769,8 @@ function openAddSheet(prefill={}){
     document.getElementById('btn-delete').addEventListener('click',()=>{ deleteItem(editingId); closeAdd(); });
   } else { dr.innerHTML=''; }
   document.getElementById('add-overlay').classList.add('open');
+  // Always open at the top regardless of previous scroll position
+  document.getElementById('add-sheet').scrollTop = 0;
 }
 
 function closeAdd(){ document.getElementById('add-overlay').classList.remove('open'); editingId=null; }
