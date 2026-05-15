@@ -44,7 +44,7 @@ header{
 
 /* ── Tabs ── */
 .tabs{display:flex;gap:0;border-bottom:1px solid var(--bg3);background:var(--bg);flex-shrink:0}
-.tab{flex:1;padding:10px 4px;text-align:center;font-size:12px;color:var(--text3);cursor:pointer;
+.tab{flex:1;padding:10px 4px;text-align:center;font-size:12px;color:var(--text2);cursor:pointer;
   border-bottom:2px solid transparent;transition:all .15s;font-family:var(--mono);letter-spacing:.3px}
 .tab.active{color:var(--accent);border-bottom-color:var(--accent)}
 
@@ -101,7 +101,7 @@ header{
 .filter-row{display:flex;gap:6px;padding:8px 12px 4px;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none}
 .filter-row::-webkit-scrollbar{display:none}
 .fpill{flex-shrink:0;font-size:12px;font-family:var(--mono);padding:5px 12px;border-radius:20px;
-  border:1px solid var(--bg4);background:var(--bg2);color:var(--text3);cursor:pointer;transition:all .12s}
+  border:1px solid var(--bg4);background:var(--bg2);color:var(--text2);cursor:pointer;transition:all .12s}
 .fpill.active{background:var(--accent);color:#1a1500;border-color:var(--accent)}
 
 /* ── Empty state ── */
@@ -453,8 +453,35 @@ textarea.form-input{resize:vertical;min-height:72px}
       <input class="form-input" id="file-id-input" type="text" placeholder="Paste existing file ID, or leave blank to create new"/>
       <button class="btn btn-primary" id="confirm-file-btn" style="width:100%;margin-top:10px">Connect</button>
     </div>
+
+    <div style="padding:12px 16px 0">
+      <button class="btn btn-secondary" id="import-csv-btn" style="width:100%;font-family:var(--mono);font-size:13px">↓ import from CSV file</button>
+    </div>
   </div>
 </div>
+
+<!-- IMPORT OVERLAY -->
+<div class="overlay" id="import-overlay">
+  <div class="sheet" style="position:relative">
+    <div class="sheet-handle"></div>
+    <button class="sheet-close" id="import-close">✕</button>
+    <div class="sheet-title">Import from CSV</div>
+    <div class="form-section">
+      <p style="font-size:13px;color:var(--text2);line-height:1.6;margin-bottom:14px">
+        Import items from a previously exported <code style="font-family:var(--mono);color:var(--accent);font-size:12px">shelf-inventory.csv</code> file. Existing items with matching IDs will be updated; new items will be added. Nothing is deleted.
+      </p>
+      <label class="form-label">choose CSV file</label>
+      <input type="file" accept=".csv,text/csv" id="csv-file-input" style="display:none"/>
+      <button class="cam-btn" id="csv-pick-btn" style="width:100%;flex-direction:row;gap:10px;justify-content:center">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+        <span id="csv-pick-label">tap to choose file</span>
+      </button>
+      <div id="import-preview" style="margin-top:12px;display:none">
+        <div style="padding:10px 12px;background:var(--bg2);border:1px solid var(--bg3);border-radius:var(--radius-sm);font-size:13px;color:var(--text2)" id="import-preview-text"></div>
+        <button class="btn btn-primary" id="confirm-import-btn" style="width:100%;margin-top:10px">Import items</button>
+      </div>
+    </div>
+  </div>
 
 <!-- LOOKUP DIALOG -->
 <div class="overlay" id="lookup-overlay">
@@ -832,15 +859,19 @@ document.getElementById('do-lookup-btn').addEventListener('click',()=>{
 });
 
 async function doLookup(code, inline){
-  // Try to determine if ISBN (book) or UPC (other)
-  const isISBN = /^\d{10,13}$/.test(code.replace(/-/g,''));
-
+  // Open Library has the largest database and no rate limit — always try first.
+  // UPC ItemDB is fallback for non-book barcodes, with rate-limit detection.
   let result = null;
-  if(isISBN){
-    result = await lookupOpenLibrary(code);
-  }
+
+  result = await lookupOpenLibrary(code);
+
   if(!result){
     result = await lookupUPCItemdb(code);
+  }
+
+  // If still nothing, try Open Library by title search as last resort
+  if(!result && inline){
+    toast('No lookup results','');
   }
 
   if(!inline){
@@ -849,19 +880,16 @@ async function doLookup(code, inline){
 
   if(!result){
     if(!inline) document.getElementById('lookup-results-list').innerHTML='<p style="font-size:13px;color:var(--text3);padding:8px 0">No results found. Try entering the title manually.</p>';
-    else toast('No lookup results','');
     return;
   }
 
   pendingLookupResult = result;
 
   if(inline){
-    // show inline in add sheet
     document.getElementById('lr-title').textContent = result.title||'Unknown';
     document.getElementById('lr-sub').textContent = [result.creator, result.year].filter(Boolean).join(' · ');
     document.getElementById('lookup-result').classList.add('visible');
   } else {
-    // show in lookup sheet
     document.getElementById('lookup-results-list').innerHTML = `
       <div class="lookup-result visible">
         <div class="lr-title">${esc(result.title||'Unknown')}</div>
@@ -906,7 +934,10 @@ async function lookupOpenLibrary(isbn){
 async function lookupUPCItemdb(upc){
   try{
     const r = await fetch(`https://api.upcitemdb.com/prod/trial/lookup?upc=${encodeURIComponent(upc)}`);
+    // 429 or code field "EXCEED_LIMIT" means rate-limited — fail gracefully
+    if(r.status===429){ toast('UPC lookup limit reached today — tried Open Library first',''); return null; }
     const d = await r.json();
+    if(d.code==='EXCEED_LIMIT'||d.code==='INVALID_UPC'){ return null; }
     const item = (d.items||[])[0];
     if(!item) return null;
     const title = item.title||item.description||'';
@@ -1131,6 +1162,91 @@ function randomBase64(n){
 async function sha256Base64url(str){
   const buf = await crypto.subtle.digest('SHA-256',new TextEncoder().encode(str));
   return btoa(String.fromCharCode(...new Uint8Array(buf))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=/g,'');
+}
+
+// ═══════════════════════════════════════════════════════
+//  CSV IMPORT
+// ═══════════════════════════════════════════════════════
+document.getElementById('import-csv-btn').addEventListener('click',()=>{
+  document.getElementById('cloud-overlay').classList.remove('open');
+  document.getElementById('import-overlay').classList.add('open');
+  document.getElementById('import-preview').style.display='none';
+  document.getElementById('csv-pick-label').textContent='tap to choose file';
+});
+document.getElementById('import-close').addEventListener('click',()=>{
+  document.getElementById('import-overlay').classList.remove('open');
+});
+document.getElementById('csv-pick-btn').addEventListener('click',()=>{
+  document.getElementById('csv-file-input').click();
+});
+
+let parsedImportRows = [];
+document.getElementById('csv-file-input').addEventListener('change', e=>{
+  const file = e.target.files[0];
+  if(!file) return;
+  document.getElementById('csv-pick-label').textContent = file.name;
+  const reader = new FileReader();
+  reader.onload = ev => {
+    const text = ev.target.result;
+    parsedImportRows = parseCSV(text);
+    const newCount = parsedImportRows.filter(r=>!items.find(i=>i.id===r.id)).length;
+    const updateCount = parsedImportRows.filter(r=>items.find(i=>i.id===r.id)).length;
+    document.getElementById('import-preview-text').innerHTML =
+      `Found <strong style="color:var(--text)">${parsedImportRows.length}</strong> rows — ` +
+      `<strong style="color:var(--success)">${newCount} new</strong>, ` +
+      `<strong style="color:var(--info)">${updateCount} updates</strong>.`;
+    document.getElementById('import-preview').style.display='block';
+  };
+  reader.readAsText(file);
+  e.target.value=''; // reset so same file can be re-picked
+});
+
+document.getElementById('confirm-import-btn').addEventListener('click',()=>{
+  if(!parsedImportRows.length){ toast('Nothing to import','err'); return; }
+  let added=0, updated=0;
+  parsedImportRows.forEach(row=>{
+    const existing = items.findIndex(i=>i.id===row.id);
+    if(existing>=0){ items[existing]=row; updated++; }
+    else { items.push(row); added++; }
+  });
+  saveItems();
+  renderList();
+  document.getElementById('import-overlay').classList.remove('open');
+  toast(`Imported: ${added} added, ${updated} updated ✓`,'ok');
+  parsedImportRows=[];
+});
+
+function parseCSV(text){
+  const lines = text.split(/\r?\n/).filter(l=>l.trim());
+  if(lines.length<2) return [];
+  const headers = splitCSVRow(lines[0]);
+  const rows = [];
+  for(let i=1;i<lines.length;i++){
+    const vals = splitCSVRow(lines[i]);
+    if(vals.length<2) continue;
+    const obj = {};
+    headers.forEach((h,idx)=>{ obj[h]=vals[idx]||''; });
+    // coerce numeric timestamps
+    if(obj.addedAt && /^\d+$/.test(obj.addedAt)) obj.addedAt=+obj.addedAt;
+    if(obj.updatedAt && /^\d+$/.test(obj.updatedAt)) obj.updatedAt=+obj.updatedAt;
+    if(obj.id && obj.title) rows.push(obj);
+  }
+  return rows;
+}
+
+function splitCSVRow(line){
+  const result=[];
+  let cur='', inQuote=false;
+  for(let i=0;i<line.length;i++){
+    const c=line[i];
+    if(c==='"'){
+      if(inQuote && line[i+1]==='"'){ cur+='"'; i++; }
+      else inQuote=!inQuote;
+    } else if(c===','&&!inQuote){ result.push(cur); cur=''; }
+    else cur+=c;
+  }
+  result.push(cur);
+  return result;
 }
 
 // ═══════════════════════════════════════════════════════
